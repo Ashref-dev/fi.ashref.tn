@@ -105,7 +105,7 @@ unsafe_shell_default: false
 persist_runs: false
 openrouter_base_url: https://openrouter.ai/api/v1
 http_referer: https://example.com
-title: ag-cli
+title: fi.ashref.tn
 output_format: text
 no_plan: false
 quiet: false
@@ -132,7 +132,7 @@ ${EDITOR:-nano} ~/.config/fi.ashref.tn/config.yaml
 ## JSON Output Mode
 
 ```bash
-./ag-cli --json "summarize the repo"
+./fi.ashref.tn --json "summarize the repo"
 ```
 
 JSON mode prints a single JSON document to stdout (no streaming) containing:
@@ -144,7 +144,7 @@ JSON mode prints a single JSON document to stdout (no streaming) containing:
 
 ## Shell History Context
 
-By default, ag-cli includes the last 50 commands from your shell history (redacted) to improve command‑recall questions. Disable with `--no-history` or set `AGCLI_NO_HISTORY=true`.
+By default, fi.ashref.tn includes the last 50 commands from your shell history (redacted) to improve command‑recall questions. Disable with `--no-history` or set `AGCLI_NO_HISTORY=true`.
 
 ## Troubleshooting
 

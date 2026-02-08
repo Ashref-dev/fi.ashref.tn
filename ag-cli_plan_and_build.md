@@ -23,7 +23,7 @@ Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can 
 
 # Interpreted Feature Summary
 
-`ag-cli` is a terminal-native agent orchestrator for codebase Q&A. It builds a lightweight repository summary, calls an OpenRouter LLM with tool definitions, executes tool calls (grep/shell/web), streams plain-text output (plan, tool calls, final answer), optionally adds recent shell history context, and ends with a cited final answer. JSON mode outputs a full run log for automation.
+`fi.ashref.tn` is a terminal-native agent orchestrator for codebase Q&A. It builds a lightweight repository summary, calls an OpenRouter LLM with tool definitions, executes tool calls (grep/shell/web), streams plain-text output (plan, tool calls, final answer), optionally adds recent shell history context, and ends with a cited final answer. JSON mode outputs a full run log for automation.
 
 # Assumptions & Unknowns
 
@@ -37,7 +37,7 @@ Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can 
 
 ## User Success
 
-- Can run `ag-cli "question"` and receive a concise, cited answer.
+- Can run `fi.ashref.tn "question"` and receive a concise, cited answer.
 - Sees plan/tool calls/final answer in scrollback (quiet/no-plan supported).
 - Shell commands are safely constrained by default.
 
@@ -64,7 +64,7 @@ Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can 
 
 ## Primary Flow
 
-1. User runs `ag-cli "question"`.
+1. User runs `fi.ashref.tn "question"`.
 2. CLI prints header + model + repo root.
 3. Model-generated plan (3–8 bullets) appears.
 4. Trace events stream (tool calls + results).
@@ -255,7 +255,7 @@ Acceptance:
 
 1. Build:
    ```bash
-   go build -o ag-cli ./cmd/ag-cli
+   go build -o fi.ashref.tn ./cmd/ag-cli
    ```
 2. Export keys:
    ```bash
@@ -264,7 +264,7 @@ Acceptance:
    ```
 3. Run:
    ```bash
-   ./ag-cli "your question"
+   ./fi.ashref.tn "your question"
    ```
 4. Release (CI):
    - Push a tag like `v0.1.0` to trigger multi‑arch builds and `checksums.txt` artifacts.
@@ -280,7 +280,7 @@ Acceptance:
 
 1. Confirm Go 1.24+ installed.
 2. Set `OPENROUTER_API_KEY`.
-3. Build with `go build -o ag-cli ./cmd/ag-cli`.
+3. Build with `go build -o fi.ashref.tn ./cmd/ag-cli`.
 4. Run `go test ./...` and `go vet ./...`.
 5. Run CLI in a sample repo and validate output sections.
 
