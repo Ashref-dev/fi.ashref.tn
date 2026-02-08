@@ -1,0 +1,4 @@
+ag-cli
+/bin/
+/dist/
+*.log
