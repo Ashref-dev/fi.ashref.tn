@@ -154,7 +154,7 @@ By default, fi includes the last 50 commands from your shell history (redacted) 
 
 ## Releases
 
-Tagging a version like `v0.1.0` triggers the release workflow to build multi‑arch binaries and a `checksums.txt` artifact.
+Build the binary locally as shown above. (No automated GitHub workflows are included.)
 
 ## License
 
