@@ -36,7 +36,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 			if r.quiet {
 				return
 			}
-			fmt.Fprintf(r.w, "fi.ashref.tn v%s | repo: %s | model: %s | run: %s\n", payload.Version, payload.RepoRoot, payload.Model, payload.RunID)
+			fmt.Fprintf(r.w, "fi v%s | repo: %s | model: %s | run: %s\n", payload.Version, payload.RepoRoot, payload.Model, payload.RunID)
 			fmt.Fprintf(r.w, "Started: %s\n", payload.StartedAt.Format("2006-01-02T15:04:05Z07:00"))
 		}
 	case events.PlanGenerated:

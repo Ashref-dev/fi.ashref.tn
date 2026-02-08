@@ -1,10 +1,10 @@
 # fi.ashref.tn
 
-`fi.ashref.tn` is a terminal-native agent orchestrator that answers repository questions by reasoning over local files and (optionally) the web. It streams a clean, plain‑text trace (plan, tool calls, final answer) and returns concise, cited answers.
+`fi.ashref.tn` is a terminal-native agent orchestrator that answers repository questions by reasoning over local files and (optionally) the web. It streams a clean, plain‑text trace (plan, tool calls, final answer) and returns concise, cited answers. The CLI command is `fi`.
 
 ## Features
 
-- Single-command interface: `fi.ashref.tn "question here"`
+- Single-command interface: `fi "question here"`
 - Structured, scrollback-friendly output (plan, tool calls, final answer) streamed as plain text
 - Tool calling: `grep` (ripgrep), `shell` (guarded), and `exa_search` (web)
 - Repository context builder with redaction and size limits
@@ -21,7 +21,7 @@
 ## Install (local)
 
 ```bash
-go build -o fi.ashref.tn ./cmd/ag-cli
+go build -o fi ./cmd/ag-cli
 ```
 
 ## Add to PATH
@@ -29,7 +29,7 @@ go build -o fi.ashref.tn ./cmd/ag-cli
 macOS/Linux:
 
 ```bash
-install -m 0755 fi.ashref.tn ~/.local/bin/fi.ashref.tn
+install -m 0755 fi ~/.local/bin/fi
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -37,7 +37,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```bash
 export OPENROUTER_API_KEY=...
-./fi.ashref.tn "what is the tech stack here?"
+./fi "what is the tech stack here?"
 ```
 
 ## Quick Start (OpenAI‑spec providers)
@@ -46,19 +46,19 @@ export OPENROUTER_API_KEY=...
 export OPENAI_API_KEY=...
 export OPENAI_BASE_URL=https://your-provider.example/v1
 export OPENAI_MODEL=your-model
-./fi.ashref.tn "how do I run tests?"
+./fi "how do I run tests?"
 ```
 
 ## Usage
 
 ```bash
-./fi.ashref.tn "what is the tech stack here?"
-./fi.ashref.tn --no-web "where is auth implemented?"
-./fi.ashref.tn --json "summarize the repo"
-./fi.ashref.tn --unsafe-shell "run tests and summarize failures"
-./fi.ashref.tn --quiet "how do I deploy?"
-./fi.ashref.tn --no-plan "show the docker command"
-./fi.ashref.tn --log-file ./fi.ashref.tn.log "summarize deployment steps"
+./fi "what is the tech stack here?"
+./fi --no-web "where is auth implemented?"
+./fi --json "summarize the repo"
+./fi --unsafe-shell "run tests and summarize failures"
+./fi --quiet "how do I deploy?"
+./fi --no-plan "show the docker command"
+./fi --log-file ./fi.log "summarize deployment steps"
 ```
 
 ## Environment Variables
@@ -89,7 +89,7 @@ Notes:
 
 ## Config File (Persistent Settings)
 
-`fi.ashref.tn` reads a config file from:
+`fi` reads a config file from:
 
 - `~/.config/fi.ashref.tn/config.yaml`
 - `~/.config/fi.ashref.tn/config.json`
@@ -144,7 +144,7 @@ JSON mode prints a single JSON document to stdout (no streaming) containing:
 
 ## Shell History Context
 
-By default, fi.ashref.tn includes the last 50 commands from your shell history (redacted) to improve command‑recall questions. Disable with `--no-history` or set `AGCLI_NO_HISTORY=true`.
+By default, fi includes the last 50 commands from your shell history (redacted) to improve command‑recall questions. Disable with `--no-history` or set `AGCLI_NO_HISTORY=true`.
 
 ## Troubleshooting
 

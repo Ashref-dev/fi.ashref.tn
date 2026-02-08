@@ -32,8 +32,8 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "fi.ashref.tn [question]",
-		Short:         "fi.ashref.tn - terminal-native agent orchestrator",
+		Use:           "fi [question]",
+		Short:         "fi - terminal-native agent orchestrator",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.MinimumNArgs(1),
