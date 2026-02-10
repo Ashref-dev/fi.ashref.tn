@@ -84,7 +84,7 @@ type rawConfig struct {
 // Load resolves configuration from defaults, config files, env, and flags.
 func Load(cmd *cobra.Command) (Config, error) {
 	v := viper.New()
-	v.SetEnvPrefix("FI")
+	v.SetEnvPrefix("FICLI")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
@@ -128,28 +128,19 @@ func Load(cmd *cobra.Command) (Config, error) {
 		_ = v.BindPFlag("no_history", cmd.Flags().Lookup("no-history"))
 	}
 
-	if seconds := os.Getenv("FI_TIMEOUT_SECONDS"); seconds != "" {
+	if seconds := os.Getenv("FICLI_TIMEOUT_SECONDS"); seconds != "" {
 		v.Set("timeout", seconds+"s")
 	}
-	if fiModel := os.Getenv("FI_MODEL"); fiModel != "" {
-		v.Set("model", fiModel)
+	if model := os.Getenv("FICLI_MODEL"); model != "" {
+		v.Set("model", model)
 	}
-	if fiBaseURL := os.Getenv("FI_BASE_URL"); fiBaseURL != "" {
-		v.Set("openrouter_base_url", fiBaseURL)
+	if baseURL := os.Getenv("FICLI_OPENROUTER_BASE_URL"); baseURL != "" {
+		v.Set("openrouter_base_url", baseURL)
 	}
-	if seconds := os.Getenv("AGCLI_TIMEOUT_SECONDS"); seconds != "" && os.Getenv("FI_TIMEOUT_SECONDS") == "" {
-		v.Set("timeout", seconds+"s")
-	}
-	if agModel := os.Getenv("AGCLI_MODEL"); agModel != "" && os.Getenv("FI_MODEL") == "" {
-		v.Set("model", agModel)
-	}
-	if agBaseURL := os.Getenv("AGCLI_OPENROUTER_BASE_URL"); agBaseURL != "" && os.Getenv("FI_BASE_URL") == "" {
-		v.Set("openrouter_base_url", agBaseURL)
-	}
-	if openAIModel := os.Getenv("OPENAI_MODEL"); openAIModel != "" && os.Getenv("FI_MODEL") == "" && os.Getenv("AGCLI_MODEL") == "" {
+	if openAIModel := os.Getenv("OPENAI_MODEL"); openAIModel != "" && os.Getenv("FICLI_MODEL") == "" {
 		v.Set("model", openAIModel)
 	}
-	if openAIBaseURL := os.Getenv("OPENAI_BASE_URL"); openAIBaseURL != "" && os.Getenv("FI_BASE_URL") == "" && os.Getenv("AGCLI_OPENROUTER_BASE_URL") == "" {
+	if openAIBaseURL := os.Getenv("OPENAI_BASE_URL"); openAIBaseURL != "" && os.Getenv("FICLI_OPENROUTER_BASE_URL") == "" {
 		v.Set("openrouter_base_url", openAIBaseURL)
 	}
 
@@ -252,7 +243,6 @@ func loadConfigFile(v *viper.Viper) error {
 		return nil
 	}
 	bases := []string{
-		filepath.Join(configDir, "fi-cli"),
 		filepath.Join(configDir, "fi-cli"),
 	}
 	var candidates []string

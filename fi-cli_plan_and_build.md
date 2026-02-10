@@ -27,7 +27,7 @@ Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can 
 
 # Assumptions & Unknowns
 
-- Assumption: Users will provide `FI_API_KEY` and optionally `EXA_API_KEY`.
+- Assumption: Users will provide `FICLI_API_KEY` and optionally `EXA_API_KEY`.
 - Assumption: `rg` is installed for best performance; fallback exists when not.
 - Assumption: `openrouter/pony-alpha` supports tool calling and streaming.
 - Unknown: Exact repo size and file types; context size limits may need tuning per user.
@@ -259,7 +259,7 @@ Acceptance:
    ```
 2. Export keys:
    ```bash
-   export FI_API_KEY=...
+   export FICLI_API_KEY=...
    export EXA_API_KEY=... # optional
    ```
 3. Run:
@@ -279,7 +279,7 @@ Acceptance:
 ## Ordered Checklist
 
 1. Confirm Go 1.24+ installed.
-2. Set `FI_API_KEY`.
+2. Set `FICLI_API_KEY`.
 3. Build with `go build -o fi ./cmd/fi-cli`.
 4. Run `go test ./...` and `go vet ./...`.
 5. Run CLI in a sample repo and validate output sections.

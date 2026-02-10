@@ -47,7 +47,7 @@ func newRootCmd() *cobra.Command {
 				cfg.NoPlan = true
 			}
 
-			apiKey := os.Getenv("FI_API_KEY")
+			apiKey := os.Getenv("FICLI_API_KEY")
 			if apiKey == "" {
 				apiKey = os.Getenv("OPENROUTER_API_KEY")
 			}
@@ -56,7 +56,7 @@ func newRootCmd() *cobra.Command {
 			}
 			mockMode := os.Getenv("FICLI_MOCK_LLM") == "1"
 			if apiKey == "" && !mockMode {
-				fmt.Fprintln(os.Stderr, "FI_API_KEY is required")
+				fmt.Fprintln(os.Stderr, "FICLI_API_KEY is required")
 				os.Exit(2)
 			}
 

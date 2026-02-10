@@ -1,13 +1,6 @@
-# fi.ashref.tn
+# fi-cli
 
-fi.ashref.tn is a terminal-native agent orchestrator that answers repository questions by reasoning over local files (and optionally the web). The CLI command is `fi`.
-
-## Requirements
-
-- Go 1.24+
-- `rg` (ripgrep) recommended
-- FI API key
-- Exa API key (optional, enables web search)
+fi-cli is a terminal-native agent orchestrator that answers repository questions by reasoning over local files (and optionally the web). The CLI command is `fi`.
 
 ## Quickstart
 
@@ -20,10 +13,10 @@ fi.ashref.tn is a terminal-native agent orchestrator that answers repository que
    install -m 0755 fi ~/.local/bin/fi
    export PATH="$HOME/.local/bin:$PATH"
    ```
-3. Set your FI API key and model:
+3. Set your API key and model:
    ```bash
-   export FI_API_KEY=...
-   export FI_MODEL=openrouter/pony-alpha
+   export FICLI_API_KEY=...
+   export FICLI_MODEL=openrouter/pony-alpha
    ```
 4. Run it:
    ```bash
@@ -32,34 +25,22 @@ fi.ashref.tn is a terminal-native agent orchestrator that answers repository que
 
 ## Configuration
 
-Environment variables (FI_* are the primary, unique names):
+Environment variables:
 
-- `FI_API_KEY` (required)
-- `FI_MODEL` (model override)
-- `FI_BASE_URL` (OpenAI-spec base URL, default: `https://openrouter.ai/api/v1`)
-- `EXA_API_KEY` (optional)
-- `FI_MAX_STEPS` (default: 8)
-- `FI_TIMEOUT_SECONDS` (default: 60)
-- `FI_HTTP_REFERER`, `FI_TITLE` (optional OpenRouter attribution headers)
-- `FI_PERSIST_RUNS`, `FI_NO_PLAN`, `FI_QUIET`, `FI_LOG_FILE`
-- `FI_HISTORY_LINES` (default: 50), `FI_NO_HISTORY`
+- `FICLI_API_KEY` (preferred; falls back to `OPENROUTER_API_KEY` or `OPENAI_API_KEY`)
+- `FICLI_MODEL` (model override)
+- `FICLI_OPENROUTER_BASE_URL` (default: `https://openrouter.ai/api/v1`)
+- `FICLI_MAX_STEPS` (default: 8)
+- `FICLI_TIMEOUT_SECONDS` (default: 60)
+- `FICLI_HTTP_REFERER`, `FICLI_TITLE` (optional OpenRouter attribution headers)
+- `FICLI_PERSIST_RUNS`, `FICLI_NO_PLAN`, `FICLI_QUIET`, `FICLI_LOG_FILE`
+- `FICLI_HISTORY_LINES` (default: 50), `FICLI_NO_HISTORY`
+- `EXA_API_KEY` (optional, enables web search)
 
-Fallback compatibility (optional):
+Config file (optional):
 
-- `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`
-- legacy `AGCLI_*` env vars are still accepted
-
-Config file (persistent, easy to edit):
-
-- `~/.config/fi.ashref.tn/config.yaml`
-- `~/.config/fi.ashref.tn/config.json`
-
-Create/edit quickly:
-
-```bash
-mkdir -p ~/.config/fi.ashref.tn
-${EDITOR:-nano} ~/.config/fi.ashref.tn/config.yaml
-```
+- `~/.config/fi-cli/config.yaml`
+- `~/.config/fi-cli/config.json`
 
 ## Usage
 
@@ -68,14 +49,11 @@ fi "what is the tech stack here?"
 fi --no-web "where is auth implemented?"
 fi --json "summarize the repo"
 fi --unsafe-shell "run tests and summarize failures"
-fi --quiet "how do I deploy?"
-fi --no-plan "show the docker command"
-fi --log-file ./fi.log "summarize deployment steps"
 ```
 
 ## Troubleshooting
 
-- Missing API key: set `FI_API_KEY` before running.
+- Missing API key: set `FICLI_API_KEY` (or `OPENROUTER_API_KEY`/`OPENAI_API_KEY`) before running.
 - `rg` not installed: the grep tool falls back to a slower Go scanner.
 - Exa key missing: web search is disabled automatically.
 
