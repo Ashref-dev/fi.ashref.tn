@@ -8,7 +8,7 @@
 ## Build
 
 ```bash
-go build -o ag-cli ./cmd/ag-cli
+go build -o fi ./cmd/fi-cli
 ```
 
 ## Test
@@ -34,5 +34,5 @@ gofmt -w $(rg --files -g'*.go')
 For deterministic test runs without API calls:
 
 ```bash
-AGCLI_MOCK_LLM=1 go run ./cmd/ag-cli --json "test question"
+FICLI_MOCK_LLM=1 go run ./cmd/fi-cli --json "test question"
 ```

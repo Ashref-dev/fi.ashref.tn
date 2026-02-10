@@ -1,160 +1,83 @@
 # fi.ashref.tn
 
-`fi.ashref.tn` is a terminal-native agent orchestrator that answers repository questions by reasoning over local files and (optionally) the web. It streams a clean, plain‑text trace (plan, tool calls, final answer) and returns concise, cited answers. The CLI command is `fi`.
-
-## Features
-
-- Single-command interface: `fi "question here"`
-- Structured, scrollback-friendly output (plan, tool calls, final answer) streamed as plain text
-- Tool calling: `grep` (ripgrep), `shell` (guarded), and `exa_search` (web)
-- Repository context builder with redaction and size limits
-- Optional JSON output mode for automation
-- Optional shell history context (last 50 commands) to improve command recall
+fi.ashref.tn is a terminal-native agent orchestrator that answers repository questions by reasoning over local files (and optionally the web). The CLI command is `fi`.
 
 ## Requirements
 
-- Go 1.24+ for building
-- `rg` (ripgrep) recommended for fast grep tool (fallback exists)
-- OpenRouter API key
-- Exa API key (optional) for web search
+- Go 1.24+
+- `rg` (ripgrep) recommended
+- FI API key
+- Exa API key (optional, enables web search)
 
-## Install (local)
+## Quickstart
 
-```bash
-go build -o fi ./cmd/ag-cli
-```
+1. Build the binary:
+   ```bash
+   go build -o fi ./cmd/fi-cli
+   ```
+2. Add it to your PATH:
+   ```bash
+   install -m 0755 fi ~/.local/bin/fi
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
+3. Set your FI API key and model:
+   ```bash
+   export FI_API_KEY=...
+   export FI_MODEL=openrouter/pony-alpha
+   ```
+4. Run it:
+   ```bash
+   fi "question here"
+   ```
 
-## Add to PATH
+## Configuration
 
-macOS/Linux:
+Environment variables (FI_* are the primary, unique names):
 
-```bash
-install -m 0755 fi ~/.local/bin/fi
-export PATH="$HOME/.local/bin:$PATH"
-```
+- `FI_API_KEY` (required)
+- `FI_MODEL` (model override)
+- `FI_BASE_URL` (OpenAI-spec base URL, default: `https://openrouter.ai/api/v1`)
+- `EXA_API_KEY` (optional)
+- `FI_MAX_STEPS` (default: 8)
+- `FI_TIMEOUT_SECONDS` (default: 60)
+- `FI_HTTP_REFERER`, `FI_TITLE` (optional OpenRouter attribution headers)
+- `FI_PERSIST_RUNS`, `FI_NO_PLAN`, `FI_QUIET`, `FI_LOG_FILE`
+- `FI_HISTORY_LINES` (default: 50), `FI_NO_HISTORY`
 
-## Quick Start (OpenRouter)
+Fallback compatibility (optional):
 
-```bash
-export OPENROUTER_API_KEY=...
-./fi "what is the tech stack here?"
-```
+- `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`
+- legacy `AGCLI_*` env vars are still accepted
 
-## Quick Start (OpenAI‑spec providers)
-
-```bash
-export OPENAI_API_KEY=...
-export OPENAI_BASE_URL=https://your-provider.example/v1
-export OPENAI_MODEL=your-model
-./fi "how do I run tests?"
-```
-
-## Usage
-
-```bash
-./fi "what is the tech stack here?"
-./fi --no-web "where is auth implemented?"
-./fi --json "summarize the repo"
-./fi --unsafe-shell "run tests and summarize failures"
-./fi --quiet "how do I deploy?"
-./fi --no-plan "show the docker command"
-./fi --log-file ./fi.log "summarize deployment steps"
-```
-
-## Environment Variables
-
-- `OPENROUTER_API_KEY` (preferred)
-- `OPENAI_API_KEY` (fallback, OpenAI‑spec compatible providers)
-- `EXA_API_KEY` (optional, enables web search)
-- `AGCLI_MODEL` (optional, default: `openrouter/pony-alpha`)
-- `OPENAI_MODEL` (optional, fallback model name)
-- `AGCLI_MAX_STEPS` (optional, default: 8)
-- `AGCLI_TIMEOUT_SECONDS` (optional, default: `60`)
-- `AGCLI_OPENROUTER_BASE_URL` (optional, default: `https://openrouter.ai/api/v1`)
-- `OPENAI_BASE_URL` (optional, fallback OpenAI‑spec base URL)
-- `AGCLI_HTTP_REFERER` (optional, for OpenRouter attribution headers)
-- `AGCLI_TITLE` (optional, for OpenRouter attribution headers)
-- `AGCLI_PERSIST_RUNS` (optional, set to `true` to persist run logs)
-- `AGCLI_NO_PLAN` (optional, set to `true` to skip plan generation/output)
-- `AGCLI_QUIET` (optional, set to `true` to print only the final answer)
-- `AGCLI_LOG_FILE` (optional, path to write plain-text output)
-- `AGCLI_HISTORY_LINES` (optional, default: `50`)
-- `AGCLI_NO_HISTORY` (optional, set to `true` to disable shell history context)
-
-Notes:
-- `AGCLI_*` variables and CLI flags take precedence.
-- `OPENAI_*` variables are fallbacks for OpenAI‑spec compatible providers.
-
-> Note: `AGCLI_MOCK_LLM=1` enables a deterministic mock client for tests.
-
-## Config File (Persistent Settings)
-
-`fi` reads a config file from:
+Config file (persistent, easy to edit):
 
 - `~/.config/fi.ashref.tn/config.yaml`
 - `~/.config/fi.ashref.tn/config.json`
-- (legacy) `~/.config/ag-cli/config.yaml` / `config.json`
 
-Example:
-
-```yaml
-model: openrouter/pony-alpha
-max_steps: 8
-timeout: 60s
-unsafe_shell_default: false
-persist_runs: false
-openrouter_base_url: https://openrouter.ai/api/v1
-http_referer: https://example.com
-title: fi.ashref.tn
-output_format: text
-no_plan: false
-quiet: false
-log_file: ""
-history_lines: 50
-no_history: false
-
-tool_limits:
-  grep_max_results: 200
-  grep_max_bytes: 20480
-  shell_max_bytes: 20480
-  web_max_bytes: 30720
-  context_max_bytes: 81920
-  max_file_bytes: 32768
-```
-
-Create/edit the file quickly:
+Create/edit quickly:
 
 ```bash
 mkdir -p ~/.config/fi.ashref.tn
 ${EDITOR:-nano} ~/.config/fi.ashref.tn/config.yaml
 ```
 
-## JSON Output Mode
+## Usage
 
 ```bash
-./fi.ashref.tn --json "summarize the repo"
+fi "what is the tech stack here?"
+fi --no-web "where is auth implemented?"
+fi --json "summarize the repo"
+fi --unsafe-shell "run tests and summarize failures"
+fi --quiet "how do I deploy?"
+fi --no-plan "show the docker command"
+fi --log-file ./fi.log "summarize deployment steps"
 ```
-
-JSON mode prints a single JSON document to stdout (no streaming) containing:
-
-- run metadata
-- tool call history
-- final answer
-- timestamps
-
-## Shell History Context
-
-By default, fi includes the last 50 commands from your shell history (redacted) to improve command‑recall questions. Disable with `--no-history` or set `AGCLI_NO_HISTORY=true`.
 
 ## Troubleshooting
 
-- Missing API key: set `OPENROUTER_API_KEY` or `OPENAI_API_KEY` before running.
+- Missing API key: set `FI_API_KEY` before running.
 - `rg` not installed: the grep tool falls back to a slower Go scanner.
 - Exa key missing: web search is disabled automatically.
-
-## Releases
-
-Build the binary locally as shown above. (No automated GitHub workflows are included.)
 
 ## License
 

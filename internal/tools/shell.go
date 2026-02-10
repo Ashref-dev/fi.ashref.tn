@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"ag-cli/internal/util"
+	"fi-cli/internal/util"
 )
 
 type ShellTool struct{}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"ag-cli/internal/events"
+	"fi-cli/internal/events"
 )
 
 // StdoutRenderer streams events to a plain text writer.

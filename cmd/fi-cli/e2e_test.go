@@ -10,12 +10,12 @@ import (
 
 func TestCLIJSONOutput(t *testing.T) {
 	fixture := t.TempDir()
-	if err := os.WriteFile(filepath.Join(fixture, "sample.txt"), []byte("AGCLI test\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fixture, "sample.txt"), []byte("FICLI test\n"), 0o644); err != nil {
 		t.Fatalf("failed to write fixture: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/ag-cli", "--json", "--repo", fixture, "test question")
-	cmd.Env = append(os.Environ(), "AGCLI_MOCK_LLM=1")
+	cmd := exec.Command("go", "run", "./cmd/fi-cli", "--json", "--repo", fixture, "test question")
+	cmd.Env = append(os.Environ(), "FICLI_MOCK_LLM=1")
 	wd, _ := os.Getwd()
 	cmd.Dir = filepath.Dir(filepath.Dir(wd))
 

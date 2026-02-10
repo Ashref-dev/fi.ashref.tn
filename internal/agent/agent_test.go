@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"ag-cli/internal/config"
-	"ag-cli/internal/llm"
-	"ag-cli/internal/repo"
-	"ag-cli/internal/tools"
+	"fi-cli/internal/config"
+	"fi-cli/internal/llm"
+	"fi-cli/internal/repo"
+	"fi-cli/internal/tools"
 
 	"go.uber.org/zap"
 )
@@ -21,8 +21,8 @@ func (f fakeTool) Schema() map[string]any {
 	return map[string]any{"type": "object", "properties": map[string]any{"pattern": map[string]any{"type": "string"}}, "required": []string{"pattern"}}
 }
 func (f fakeTool) Execute(ctx context.Context, input json.RawMessage, meta tools.Meta) (tools.Result, error) {
-	payload := map[string]any{"matches": []string{"file.txt:1:AGCLI"}, "truncated": false, "duration_ms": 1}
-	return tools.Result{ToolName: "grep", Payload: payload, Preview: "file.txt:1:AGCLI", LineCount: 1, ByteCount: 18, Truncated: false, DurationMs: 1}, nil
+	payload := map[string]any{"matches": []string{"file.txt:1:FICLI"}, "truncated": false, "duration_ms": 1}
+	return tools.Result{ToolName: "grep", Payload: payload, Preview: "file.txt:1:FICLI", LineCount: 1, ByteCount: 18, Truncated: false, DurationMs: 1}, nil
 }
 
 func TestAgentRunWithMock(t *testing.T) {

@@ -19,15 +19,15 @@ Chosen versions (pinned):
 - uuid v1.6.0
 - retryablehttp v0.7.8 (>=0.7.7)
 
-Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can be overridden by `OPENAI_MODEL` or `AGCLI_MODEL`. Exa key optional.
+Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can be overridden by `OPENAI_MODEL` or `FICLI_MODEL`. Exa key optional.
 
 # Interpreted Feature Summary
 
-`fi.ashref.tn` is a terminal-native agent orchestrator for codebase Q&A. It builds a lightweight repository summary, calls an OpenRouter LLM with tool definitions, executes tool calls (grep/shell/web), streams plain-text output (plan, tool calls, final answer), optionally adds recent shell history context, and ends with a cited final answer. The CLI command is `fi`. JSON mode outputs a full run log for automation.
+`fi-cli` is a terminal-native agent orchestrator for codebase Q&A. It builds a lightweight repository summary, calls an OpenRouter LLM with tool definitions, executes tool calls (grep/shell/web), streams plain-text output (plan, tool calls, final answer), optionally adds recent shell history context, and ends with a cited final answer. The CLI command is `fi`. JSON mode outputs a full run log for automation.
 
 # Assumptions & Unknowns
 
-- Assumption: Users will provide `OPENROUTER_API_KEY` and optionally `EXA_API_KEY`.
+- Assumption: Users will provide `FI_API_KEY` and optionally `EXA_API_KEY`.
 - Assumption: `rg` is installed for best performance; fallback exists when not.
 - Assumption: `openrouter/pony-alpha` supports tool calling and streaming.
 - Unknown: Exact repo size and file types; context size limits may need tuning per user.
@@ -93,7 +93,7 @@ Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can 
 
 ## Architecture Overview
 
-- `cmd/ag-cli`: Cobra CLI entry.
+- `cmd/fi-cli`: Cobra CLI entry.
 - `internal/agent`: orchestration loop (plan → tool calls → final answer).
 - `internal/tools`: grep/shell/exa tools with validation + truncation.
 - `internal/repo`: repo root + context builder + denylist.
@@ -130,7 +130,7 @@ Assumptions noted: OpenRouter model defaults to `openrouter/pony-alpha` but can 
 ## Migration Strategy
 
 - No DB migrations in v1.
-- Optional run persistence writes JSON files to `~/.local/share/ag-cli/runs/`.
+- Optional run persistence writes JSON files to `~/.local/share/fi-cli/runs/`.
 
 # Risks & Tradeoffs
 
@@ -212,12 +212,12 @@ Acceptance:
 
 ## Files / Modules Overview
 
-- `/Users/mohamedashrefbenabdallah/Sideprojects/ag-cli/cmd/ag-cli/main.go`
-- `/Users/mohamedashrefbenabdallah/Sideprojects/ag-cli/internal/agent/*`
-- `/Users/mohamedashrefbenabdallah/Sideprojects/ag-cli/internal/tools/*`
-- `/Users/mohamedashrefbenabdallah/Sideprojects/ag-cli/internal/repo/*`
-- `/Users/mohamedashrefbenabdallah/Sideprojects/ag-cli/internal/render/*`
-- `/Users/mohamedashrefbenabdallah/Sideprojects/ag-cli/internal/llm/*`
+- `/Users/mohamedashrefbenabdallah/Sideprojects/fi-cli/cmd/fi-cli/main.go`
+- `/Users/mohamedashrefbenabdallah/Sideprojects/fi-cli/internal/agent/*`
+- `/Users/mohamedashrefbenabdallah/Sideprojects/fi-cli/internal/tools/*`
+- `/Users/mohamedashrefbenabdallah/Sideprojects/fi-cli/internal/repo/*`
+- `/Users/mohamedashrefbenabdallah/Sideprojects/fi-cli/internal/render/*`
+- `/Users/mohamedashrefbenabdallah/Sideprojects/fi-cli/internal/llm/*`
 
 ## Feature Flags / Rollout Notes
 
@@ -255,11 +255,11 @@ Acceptance:
 
 1. Build:
    ```bash
-   go build -o fi ./cmd/ag-cli
+   go build -o fi ./cmd/fi-cli
    ```
 2. Export keys:
    ```bash
-   export OPENROUTER_API_KEY=...
+   export FI_API_KEY=...
    export EXA_API_KEY=... # optional
    ```
 3. Run:
@@ -272,15 +272,15 @@ Acceptance:
 # Rollback Plan
 
 - Replace the binary with the prior version.
-- Remove optional run logs at `~/.local/share/ag-cli/runs/` if needed.
+- Remove optional run logs at `~/.local/share/fi-cli/runs/` if needed.
 
 # Handoff Pack for Implementation Agents
 
 ## Ordered Checklist
 
 1. Confirm Go 1.24+ installed.
-2. Set `OPENROUTER_API_KEY`.
-3. Build with `go build -o fi ./cmd/ag-cli`.
+2. Set `FI_API_KEY`.
+3. Build with `go build -o fi ./cmd/fi-cli`.
 4. Run `go test ./...` and `go vet ./...`.
 5. Run CLI in a sample repo and validate output sections.
 

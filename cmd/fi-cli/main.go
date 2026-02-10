@@ -11,12 +11,12 @@ import (
 	"strings"
 	"syscall"
 
-	"ag-cli/internal/agent"
-	"ag-cli/internal/config"
-	"ag-cli/internal/llm"
-	"ag-cli/internal/render"
-	"ag-cli/internal/repo"
-	"ag-cli/internal/tools"
+	"fi-cli/internal/agent"
+	"fi-cli/internal/config"
+	"fi-cli/internal/llm"
+	"fi-cli/internal/render"
+	"fi-cli/internal/repo"
+	"fi-cli/internal/tools"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -47,13 +47,16 @@ func newRootCmd() *cobra.Command {
 				cfg.NoPlan = true
 			}
 
-			apiKey := os.Getenv("OPENROUTER_API_KEY")
+			apiKey := os.Getenv("FI_API_KEY")
+			if apiKey == "" {
+				apiKey = os.Getenv("OPENROUTER_API_KEY")
+			}
 			if apiKey == "" {
 				apiKey = os.Getenv("OPENAI_API_KEY")
 			}
-			mockMode := os.Getenv("AGCLI_MOCK_LLM") == "1"
+			mockMode := os.Getenv("FICLI_MOCK_LLM") == "1"
 			if apiKey == "" && !mockMode {
-				fmt.Fprintln(os.Stderr, "OPENROUTER_API_KEY is required")
+				fmt.Fprintln(os.Stderr, "FI_API_KEY is required")
 				os.Exit(2)
 			}
 
@@ -176,7 +179,7 @@ func persistRun(logger *zap.Logger, result agent.RunResult) {
 		logger.Warn("failed to get home dir", zap.Error(err))
 		return
 	}
-	path := filepath.Join(home, ".local", "share", "ag-cli", "runs")
+	path := filepath.Join(home, ".local", "share", "fi-cli", "runs")
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		logger.Warn("failed to create run directory", zap.Error(err))
 		return

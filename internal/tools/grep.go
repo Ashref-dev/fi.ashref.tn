@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"ag-cli/internal/repo"
-	"ag-cli/internal/util"
+	"fi-cli/internal/repo"
+	"fi-cli/internal/util"
 )
 
 type GrepTool struct {

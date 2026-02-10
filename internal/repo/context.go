@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"ag-cli/internal/util"
+	"fi-cli/internal/util"
 )
 
 // Limits controls context size.
