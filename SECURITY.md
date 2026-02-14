@@ -2,9 +2,11 @@
 
 ## Shell Safety
 
-- Shell tool is allowlisted by default.
+- Shell tool is disabled by default (read-only mode uses grep only).
+- Shell tool is enabled only when a command allowlist is configured.
+- Allowlist entries are command prefixes (e.g., `git` or `git status`).
 - Potentially destructive commands are blocked unless `--unsafe-shell` is explicitly set.
-- Network utilities are blocked by default.
+- Network utilities like `curl` are blocked by default even if allowlisted.
 - Interactive commands (vim/less/etc.) are not allowed in v1.
 
 ## Secret Handling
@@ -17,5 +19,5 @@
 
 ## API Keys
 
-- API keys are read from environment variables only and are never written to disk.
+- API keys can be provided via environment variables or the config file; they are never written to disk by the app.
 - Run logs do not include secrets and can be disabled via `persist_runs: false`.

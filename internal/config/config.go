@@ -40,8 +40,10 @@ type Config struct {
 	Model             string
 	MaxSteps          int
 	Repo              string
+	APIKey            string
 	Timeout           time.Duration
 	UnsafeShell       bool
+	ShellAllowlist    []string
 	NoWeb             bool
 	NoPlan            bool
 	Quiet             bool
@@ -62,9 +64,11 @@ type rawConfig struct {
 	Model              string     `mapstructure:"model"`
 	MaxSteps           int        `mapstructure:"max_steps"`
 	Repo               string     `mapstructure:"repo"`
+	APIKey             string     `mapstructure:"api_key"`
 	Timeout            string     `mapstructure:"timeout"`
 	UnsafeShell        bool       `mapstructure:"unsafe_shell"`
 	UnsafeShellDefault bool       `mapstructure:"unsafe_shell_default"`
+	ShellAllowlist     []string   `mapstructure:"shell_allowlist"`
 	NoWeb              bool       `mapstructure:"no_web"`
 	NoPlan             bool       `mapstructure:"no_plan"`
 	Quiet              bool       `mapstructure:"quiet"`
@@ -92,8 +96,10 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("max_steps", DefaultMaxSteps)
 	v.SetDefault("timeout", DefaultTimeout.String())
 	v.SetDefault("repo", ".")
+	v.SetDefault("api_key", "")
 	v.SetDefault("unsafe_shell", false)
 	v.SetDefault("unsafe_shell_default", false)
+	v.SetDefault("shell_allowlist", []string{})
 	v.SetDefault("no_web", false)
 	v.SetDefault("no_plan", false)
 	v.SetDefault("quiet", false)
@@ -126,6 +132,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 		_ = v.BindPFlag("log_file", cmd.Flags().Lookup("log-file"))
 		_ = v.BindPFlag("history_lines", cmd.Flags().Lookup("history-lines"))
 		_ = v.BindPFlag("no_history", cmd.Flags().Lookup("no-history"))
+		_ = v.BindPFlag("shell_allowlist", cmd.Flags().Lookup("shell-allow"))
 	}
 
 	if seconds := os.Getenv("FICLI_TIMEOUT_SECONDS"); seconds != "" {
@@ -136,6 +143,9 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 	if baseURL := os.Getenv("FICLI_OPENROUTER_BASE_URL"); baseURL != "" {
 		v.Set("openrouter_base_url", baseURL)
+	}
+	if allowlist := os.Getenv("FICLI_SHELL_ALLOWLIST"); allowlist != "" {
+		v.Set("shell_allowlist", splitCSV(allowlist))
 	}
 	if openAIModel := os.Getenv("OPENAI_MODEL"); openAIModel != "" && os.Getenv("FICLI_MODEL") == "" {
 		v.Set("model", openAIModel)
@@ -181,8 +191,10 @@ func Load(cmd *cobra.Command) (Config, error) {
 		Model:             raw.Model,
 		MaxSteps:          raw.MaxSteps,
 		Repo:              raw.Repo,
+		APIKey:            strings.TrimSpace(raw.APIKey),
 		Timeout:           timeout,
 		UnsafeShell:       unsafeShell,
+		ShellAllowlist:    normalizeAllowlist(raw.ShellAllowlist),
 		NoWeb:             raw.NoWeb,
 		NoPlan:            raw.NoPlan,
 		Quiet:             raw.Quiet,
@@ -243,6 +255,7 @@ func loadConfigFile(v *viper.Viper) error {
 		return nil
 	}
 	bases := []string{
+		filepath.Join(configDir, "fi.ashref.tn"),
 		filepath.Join(configDir, "fi-cli"),
 	}
 	var candidates []string
@@ -264,4 +277,35 @@ func loadConfigFile(v *viper.Viper) error {
 		}
 	}
 	return nil
+}
+
+func splitCSV(input string) []string {
+	parts := strings.Split(input, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func normalizeAllowlist(list []string) []string {
+	seen := make(map[string]struct{}, len(list))
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
 }

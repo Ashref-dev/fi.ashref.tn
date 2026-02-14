@@ -16,15 +16,19 @@ import (
 	"fi-cli/internal/util"
 )
 
-type ShellTool struct{}
+type ShellTool struct {
+	allowlist [][]string
+}
 
 // NewShellTool constructs a shell tool.
-func NewShellTool() *ShellTool { return &ShellTool{} }
+func NewShellTool(allowlist []string) *ShellTool {
+	return &ShellTool{allowlist: normalizeAllowlist(allowlist)}
+}
 
 func (s *ShellTool) Name() string { return "shell" }
 
 func (s *ShellTool) Description() string {
-	return "Run a safe local shell command with allowlist and timeouts."
+	return "Run a local shell command from the configured allowlist with timeouts."
 }
 
 func (s *ShellTool) Schema() map[string]any {
@@ -53,10 +57,6 @@ type shellOutput struct {
 }
 
 var (
-	allowlist = map[string]struct{}{
-		"rg": {}, "ls": {}, "cat": {}, "sed": {}, "awk": {}, "head": {}, "tail": {}, "git": {}, "find": {}, "pwd": {}, "tree": {},
-		"go": {}, "node": {}, "npm": {}, "pnpm": {}, "yarn": {}, "bun": {}, "python": {}, "pip": {}, "make": {},
-	}
 	interactive = map[string]struct{}{
 		"vim": {}, "vi": {}, "nano": {}, "less": {}, "more": {}, "man": {}, "top": {}, "htop": {}, "ssh": {}, "sftp": {},
 	}
@@ -93,16 +93,20 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage, meta Met
 		return Result{}, errors.New("command is required")
 	}
 	cmdName := cmdParts[0]
+	cmdKey := strings.ToLower(cmdName)
 
-	if _, ok := interactive[cmdName]; ok {
+	if _, ok := interactive[cmdKey]; ok {
 		return Result{}, fmt.Errorf("interactive commands are not allowed: %s", cmdName)
 	}
 
 	if !meta.UnsafeShell {
-		if _, ok := allowlist[cmdName]; !ok {
+		if len(s.allowlist) == 0 {
+			return Result{}, errors.New("shell allowlist is empty")
+		}
+		if !s.allowed(cmdParts) {
 			return Result{}, fmt.Errorf("command not allowlisted: %s", cmdName)
 		}
-		if _, ok := networkTools[cmdName]; ok {
+		if _, ok := networkTools[cmdKey]; ok {
 			return Result{}, fmt.Errorf("network commands are blocked by default: %s", cmdName)
 		}
 		for _, re := range destructivePatterns {
@@ -239,4 +243,49 @@ func splitCommand(input string) ([]string, error) {
 		args = append(args, buf.String())
 	}
 	return args, nil
+}
+
+func normalizeAllowlist(list []string) [][]string {
+	out := make([][]string, 0, len(list))
+	for _, item := range list {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		tokens, err := splitCommand(trimmed)
+		if err != nil || len(tokens) == 0 {
+			continue
+		}
+		for i := range tokens {
+			tokens[i] = strings.ToLower(tokens[i])
+		}
+		out = append(out, tokens)
+	}
+	return out
+}
+
+func (s *ShellTool) allowed(cmdParts []string) bool {
+	if len(s.allowlist) == 0 || len(cmdParts) == 0 {
+		return false
+	}
+	normalized := make([]string, len(cmdParts))
+	for i, part := range cmdParts {
+		normalized[i] = strings.ToLower(part)
+	}
+	for _, entry := range s.allowlist {
+		if len(normalized) < len(entry) {
+			continue
+		}
+		match := true
+		for i := range entry {
+			if normalized[i] != entry[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }

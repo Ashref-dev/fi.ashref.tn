@@ -1,6 +1,6 @@
-# fi-cli
+# fi.ashref.tn
 
-fi-cli is a terminal-native agent orchestrator that answers repository questions by reasoning over local files (and optionally the web). The CLI command is `fi`.
+fi.ashref.tn is a terminal-native agent orchestrator that answers repository questions by reasoning over local files (and optionally the web). The CLI command is `fi`.
 
 ## Quickstart
 
@@ -35,12 +35,30 @@ Environment variables:
 - `FICLI_HTTP_REFERER`, `FICLI_TITLE` (optional OpenRouter attribution headers)
 - `FICLI_PERSIST_RUNS`, `FICLI_NO_PLAN`, `FICLI_QUIET`, `FICLI_LOG_FILE`
 - `FICLI_HISTORY_LINES` (default: 50), `FICLI_NO_HISTORY`
+- `FICLI_SHELL_ALLOWLIST` (comma-separated command prefixes; enables shell tool)
 - `EXA_API_KEY` (optional, enables web search)
 
 Config file (optional):
 
-- `~/.config/fi-cli/config.yaml`
-- `~/.config/fi-cli/config.json`
+- `~/.config/fi.ashref.tn/config.yaml`
+- `~/.config/fi.ashref.tn/config.json`
+
+Shell safety:
+
+- By default, `fi` is read-only (grep only). The shell tool is disabled unless you configure an allowlist.
+- Allowlist entries are command prefixes. For example, `git` allows any `git ...` command, while `git status` allows only `git status ...`.
+- Network utilities like `curl` remain blocked unless `--unsafe-shell` is set.
+
+Example config (`~/.config/fi.ashref.tn/config.yaml`):
+
+```yaml
+api_key: your_openrouter_key_here
+model: openrouter/pony-alpha
+shell_allowlist:
+  - git status
+  - git log
+  - aws s3 ls
+```
 
 ## Usage
 
@@ -48,6 +66,7 @@ Config file (optional):
 fi "what is the tech stack here?"
 fi --no-web "where is auth implemented?"
 fi --json "summarize the repo"
+fi --shell-allow "git status" "show git status"
 fi --unsafe-shell "run tests and summarize failures"
 ```
 

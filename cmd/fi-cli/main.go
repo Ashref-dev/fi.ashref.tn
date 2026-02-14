@@ -54,6 +54,9 @@ func newRootCmd() *cobra.Command {
 			if apiKey == "" {
 				apiKey = os.Getenv("OPENAI_API_KEY")
 			}
+			if apiKey == "" {
+				apiKey = cfg.APIKey
+			}
 			mockMode := os.Getenv("FICLI_MOCK_LLM") == "1"
 			if apiKey == "" && !mockMode {
 				fmt.Fprintln(os.Stderr, "FICLI_API_KEY is required")
@@ -76,8 +79,10 @@ func newRootCmd() *cobra.Command {
 			}
 
 			grepTool := tools.NewGrepTool()
-			shellTool := tools.NewShellTool()
-			toolList := []tools.Tool{grepTool, shellTool}
+			toolList := []tools.Tool{grepTool}
+			if cfg.UnsafeShell || len(cfg.ShellAllowlist) > 0 {
+				toolList = append(toolList, tools.NewShellTool(cfg.ShellAllowlist))
+			}
 
 			exaKey := os.Getenv("EXA_API_KEY")
 			if exaKey != "" && !cfg.NoWeb {
@@ -152,6 +157,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().String("repo", ".", "Repository path")
 	cmd.Flags().String("timeout", config.DefaultTimeout.String(), "Timeout (e.g. 60s)")
 	cmd.Flags().Bool("unsafe-shell", false, "Allow unsafe shell commands")
+	cmd.Flags().StringSlice("shell-allow", nil, "Allow shell command prefix (repeatable)")
 	cmd.Flags().Bool("no-web", false, "Disable web search")
 	cmd.Flags().Bool("no-plan", false, "Disable plan output and generation")
 	cmd.Flags().Bool("quiet", false, "Only print final answer")
@@ -179,7 +185,7 @@ func persistRun(logger *zap.Logger, result agent.RunResult) {
 		logger.Warn("failed to get home dir", zap.Error(err))
 		return
 	}
-	path := filepath.Join(home, ".local", "share", "fi-cli", "runs")
+	path := filepath.Join(home, ".local", "share", "fi.ashref.tn", "runs")
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		logger.Warn("failed to create run directory", zap.Error(err))
 		return

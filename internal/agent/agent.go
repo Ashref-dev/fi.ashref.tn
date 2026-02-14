@@ -99,7 +99,7 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(systemPrompt()),
-		openai.DeveloperMessage(developerPrompt(a.tools.Names(), !a.cfg.NoWeb)),
+		openai.DeveloperMessage(developerPrompt(a.tools.Names(), !a.cfg.NoWeb, a.cfg.ShellAllowlist)),
 		openai.DeveloperMessage("Repository context:\n" + repoCtx.Summary()),
 	}
 	if !a.cfg.NoPlan && len(plan) > 0 {
