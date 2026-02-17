@@ -46,6 +46,7 @@ Config file (optional):
 
 - `~/.config/fi.ashref.tn/config.yaml`
 - `~/.config/fi.ashref.tn/config.json`
+- macOS also supports `~/Library/Application Support/fi.ashref.tn/config.yaml`
 
 Shell safety:
 

@@ -250,13 +250,24 @@ func Load(cmd *cobra.Command) (Config, error) {
 }
 
 func loadConfigFile(v *viper.Viper) error {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return nil
+	var bases []string
+	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
+		bases = append(bases,
+			filepath.Join(configDir, "fi.ashref.tn"),
+			filepath.Join(configDir, "fi-cli"),
+		)
 	}
-	bases := []string{
-		filepath.Join(configDir, "fi.ashref.tn"),
-		filepath.Join(configDir, "fi-cli"),
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		bases = append(bases,
+			filepath.Join(xdg, "fi.ashref.tn"),
+			filepath.Join(xdg, "fi-cli"),
+		)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		bases = append(bases,
+			filepath.Join(home, ".config", "fi.ashref.tn"),
+			filepath.Join(home, ".config", "fi-cli"),
+		)
 	}
 	var candidates []string
 	for _, base := range bases {
