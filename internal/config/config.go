@@ -48,6 +48,7 @@ type Config struct {
 	NoPlan            bool
 	ShowHeader        bool
 	ShowTools         bool
+	NoTools           bool
 	Quiet             bool
 	JSON              bool
 	Verbose           bool
@@ -75,6 +76,7 @@ type rawConfig struct {
 	NoPlan             bool       `mapstructure:"no_plan"`
 	ShowHeader         bool       `mapstructure:"show_header"`
 	ShowTools          bool       `mapstructure:"show_tools"`
+	NoTools            bool       `mapstructure:"no_tools"`
 	Quiet              bool       `mapstructure:"quiet"`
 	JSON               bool       `mapstructure:"json"`
 	Verbose            bool       `mapstructure:"verbose"`
@@ -107,7 +109,8 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("no_web", false)
 	v.SetDefault("no_plan", true)
 	v.SetDefault("show_header", false)
-	v.SetDefault("show_tools", false)
+	v.SetDefault("show_tools", true)
+	v.SetDefault("no_tools", false)
 	v.SetDefault("quiet", false)
 	v.SetDefault("json", false)
 	v.SetDefault("verbose", false)
@@ -134,6 +137,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 		_ = v.BindPFlag("no_plan", cmd.Flags().Lookup("no-plan"))
 		_ = v.BindPFlag("show_header", cmd.Flags().Lookup("show-header"))
 		_ = v.BindPFlag("show_tools", cmd.Flags().Lookup("show-tools"))
+		_ = v.BindPFlag("no_tools", cmd.Flags().Lookup("no-tools"))
 		_ = v.BindPFlag("quiet", cmd.Flags().Lookup("quiet"))
 		_ = v.BindPFlag("json", cmd.Flags().Lookup("json"))
 		_ = v.BindPFlag("verbose", cmd.Flags().Lookup("verbose"))
@@ -195,6 +199,14 @@ func Load(cmd *cobra.Command) (Config, error) {
 		}
 	}
 
+	showTools := raw.ShowTools
+	if cmd != nil && cmd.Flags().Changed("show-tools") {
+		showTools = v.GetBool("show_tools")
+	}
+	if raw.NoTools {
+		showTools = false
+	}
+
 	jsonOutput := raw.JSON
 	if cmd != nil && cmd.Flags().Changed("json") {
 		jsonOutput = v.GetBool("json")
@@ -213,7 +225,8 @@ func Load(cmd *cobra.Command) (Config, error) {
 		NoWeb:             raw.NoWeb,
 		NoPlan:            noPlan,
 		ShowHeader:        raw.ShowHeader,
-		ShowTools:         raw.ShowTools,
+		ShowTools:         showTools,
+		NoTools:           raw.NoTools,
 		Quiet:             raw.Quiet,
 		JSON:              jsonOutput,
 		Verbose:           raw.Verbose,

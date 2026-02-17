@@ -53,22 +53,30 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 		}
 	case events.ToolCallStarted:
 		if payload, ok := event.Payload.(events.ToolCallStartedPayload); ok {
-			if r.quiet || !r.showTools {
+			if r.quiet || !r.showTools || !r.verbose {
 				return
 			}
-			fmt.Fprintf(r.w, "\nTool: %s (started)\n", payload.ToolName)
-			if r.verbose {
-				fmt.Fprintf(r.w, "Input: %v\n", payload.Input)
-			}
+			fmt.Fprintf(r.w, "tool: %s start\n", payload.ToolName)
+			fmt.Fprintf(r.w, "input: %v\n", payload.Input)
 		}
 	case events.ToolCallFinished, events.ToolCallFailed:
 		if payload, ok := event.Payload.(events.ToolCallFinishedPayload); ok {
 			if r.quiet || !r.showTools {
 				return
 			}
-			fmt.Fprintf(r.w, "Tool: %s (%s, %dms, lines=%d, bytes=%d, truncated=%t)\n", payload.ToolName, payload.Status, payload.DurationMs, payload.LineCount, payload.ByteCount, payload.Truncated)
+			status := payload.Status
+			if status == "success" {
+				status = "ok"
+			} else if status == "error" {
+				status = "err"
+			}
+			trunc := ""
+			if payload.Truncated {
+				trunc = ", truncated"
+			}
+			fmt.Fprintf(r.w, "tool: %s %s (%dms, %d lines, %d bytes%s)\n", payload.ToolName, status, payload.DurationMs, payload.LineCount, payload.ByteCount, trunc)
 			if r.verbose && payload.Preview != "" {
-				fmt.Fprintln(r.w, "Preview:")
+				fmt.Fprintln(r.w, "preview:")
 				for _, line := range strings.Split(payload.Preview, "\n") {
 					fmt.Fprintf(r.w, "  %s\n", line)
 				}

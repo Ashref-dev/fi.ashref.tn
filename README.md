@@ -39,7 +39,7 @@ Environment variables:
 - `FICLI_HTTP_REFERER`, `FICLI_TITLE` (optional OpenRouter attribution headers)
 - `FICLI_PERSIST_RUNS`, `FICLI_NO_PLAN`, `FICLI_QUIET`, `FICLI_LOG_FILE`
 - `FICLI_HISTORY_LINES` (default: 50), `FICLI_NO_HISTORY`
-- `FICLI_SHOW_HEADER`, `FICLI_SHOW_TOOLS`
+- `FICLI_SHOW_HEADER`, `FICLI_SHOW_TOOLS`, `FICLI_NO_TOOLS`
 - `FICLI_SHELL_ALLOWLIST` (comma-separated command prefixes; enables shell tool)
 - `EXA_API_KEY` (optional, enables web search)
 
@@ -61,7 +61,7 @@ Example config (`~/.config/fi.ashref.tn/config.yaml`):
 api_key: your_openrouter_key_here
 model: openrouter/pony-alpha
 show_header: false
-show_tools: false
+show_tools: true
 no_plan: true
 shell_allowlist:
   - git status
@@ -81,16 +81,17 @@ fi --unsafe-shell "run tests and summarize failures"
 
 ## Output customization
 
-By default, output is minimal:
+By default, output is concise and includes tool summaries:
 
 ```
+tool: grep ok (6ms, 12 lines, 1831 bytes)
 fi: <answer>
 ```
 
 Use flags to show more detail:
 
 - `--show-header` to include run metadata.
-- `--show-tools` to include tool call summaries.
+- `--no-tools` to hide tool call summaries.
 - `--plan` to generate and show a plan.
 
 ## Troubleshooting
