@@ -16,14 +16,16 @@ type StdoutRenderer struct {
 	verbose            bool
 	quiet              bool
 	noPlan             bool
+	showHeader         bool
+	showTools          bool
 	printedFinalHeader bool
 	sawDelta           bool
 	endedWithNewline   bool
 }
 
 // NewStdoutRenderer creates a renderer for plain text streaming.
-func NewStdoutRenderer(w io.Writer, verbose bool, quiet bool, noPlan bool) *StdoutRenderer {
-	return &StdoutRenderer{w: w, verbose: verbose, quiet: quiet, noPlan: noPlan}
+func NewStdoutRenderer(w io.Writer, verbose bool, quiet bool, noPlan bool, showHeader bool, showTools bool) *StdoutRenderer {
+	return &StdoutRenderer{w: w, verbose: verbose, quiet: quiet, noPlan: noPlan, showHeader: showHeader, showTools: showTools}
 }
 
 func (r *StdoutRenderer) Emit(event events.Event) {
@@ -33,7 +35,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 	switch event.Type {
 	case events.RunStarted:
 		if payload, ok := event.Payload.(events.RunStartedPayload); ok {
-			if r.quiet {
+			if r.quiet || !r.showHeader {
 				return
 			}
 			fmt.Fprintf(r.w, "fi v%s | repo: %s | model: %s | run: %s\n", payload.Version, payload.RepoRoot, payload.Model, payload.RunID)
@@ -51,7 +53,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 		}
 	case events.ToolCallStarted:
 		if payload, ok := event.Payload.(events.ToolCallStartedPayload); ok {
-			if r.quiet {
+			if r.quiet || !r.showTools {
 				return
 			}
 			fmt.Fprintf(r.w, "\nTool: %s (started)\n", payload.ToolName)
@@ -61,7 +63,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 		}
 	case events.ToolCallFinished, events.ToolCallFailed:
 		if payload, ok := event.Payload.(events.ToolCallFinishedPayload); ok {
-			if r.quiet {
+			if r.quiet || !r.showTools {
 				return
 			}
 			fmt.Fprintf(r.w, "Tool: %s (%s, %dms, lines=%d, bytes=%d, truncated=%t)\n", payload.ToolName, payload.Status, payload.DurationMs, payload.LineCount, payload.ByteCount, payload.Truncated)
@@ -75,9 +77,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 	case events.ModelDelta:
 		if payload, ok := event.Payload.(events.ModelDeltaPayload); ok {
 			if !r.printedFinalHeader {
-				if !r.quiet {
-					fmt.Fprintln(r.w, "\nFinal Answer:")
-				}
+				fmt.Fprint(r.w, "fi: ")
 				r.printedFinalHeader = true
 			}
 			if payload.Delta != "" {
@@ -95,9 +95,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 				return
 			}
 			if !r.printedFinalHeader {
-				if !r.quiet {
-					fmt.Fprintln(r.w, "\nFinal Answer:")
-				}
+				fmt.Fprint(r.w, "fi: ")
 				r.printedFinalHeader = true
 			}
 			fmt.Fprintln(r.w, payload.Answer)

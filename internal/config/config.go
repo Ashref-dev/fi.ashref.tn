@@ -46,6 +46,8 @@ type Config struct {
 	ShellAllowlist    []string
 	NoWeb             bool
 	NoPlan            bool
+	ShowHeader        bool
+	ShowTools         bool
 	Quiet             bool
 	JSON              bool
 	Verbose           bool
@@ -71,6 +73,8 @@ type rawConfig struct {
 	ShellAllowlist     []string   `mapstructure:"shell_allowlist"`
 	NoWeb              bool       `mapstructure:"no_web"`
 	NoPlan             bool       `mapstructure:"no_plan"`
+	ShowHeader         bool       `mapstructure:"show_header"`
+	ShowTools          bool       `mapstructure:"show_tools"`
 	Quiet              bool       `mapstructure:"quiet"`
 	JSON               bool       `mapstructure:"json"`
 	Verbose            bool       `mapstructure:"verbose"`
@@ -101,7 +105,9 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("unsafe_shell_default", false)
 	v.SetDefault("shell_allowlist", []string{})
 	v.SetDefault("no_web", false)
-	v.SetDefault("no_plan", false)
+	v.SetDefault("no_plan", true)
+	v.SetDefault("show_header", false)
+	v.SetDefault("show_tools", false)
 	v.SetDefault("quiet", false)
 	v.SetDefault("json", false)
 	v.SetDefault("verbose", false)
@@ -126,6 +132,8 @@ func Load(cmd *cobra.Command) (Config, error) {
 		_ = v.BindPFlag("unsafe_shell", cmd.Flags().Lookup("unsafe-shell"))
 		_ = v.BindPFlag("no_web", cmd.Flags().Lookup("no-web"))
 		_ = v.BindPFlag("no_plan", cmd.Flags().Lookup("no-plan"))
+		_ = v.BindPFlag("show_header", cmd.Flags().Lookup("show-header"))
+		_ = v.BindPFlag("show_tools", cmd.Flags().Lookup("show-tools"))
 		_ = v.BindPFlag("quiet", cmd.Flags().Lookup("quiet"))
 		_ = v.BindPFlag("json", cmd.Flags().Lookup("json"))
 		_ = v.BindPFlag("verbose", cmd.Flags().Lookup("verbose"))
@@ -180,6 +188,13 @@ func Load(cmd *cobra.Command) (Config, error) {
 		unsafeShell = raw.UnsafeShellDefault
 	}
 
+	noPlan := raw.NoPlan
+	if cmd != nil && cmd.Flags().Changed("plan") {
+		if cmd.Flags().Lookup("plan").Value.String() == "true" {
+			noPlan = false
+		}
+	}
+
 	jsonOutput := raw.JSON
 	if cmd != nil && cmd.Flags().Changed("json") {
 		jsonOutput = v.GetBool("json")
@@ -196,7 +211,9 @@ func Load(cmd *cobra.Command) (Config, error) {
 		UnsafeShell:       unsafeShell,
 		ShellAllowlist:    normalizeAllowlist(raw.ShellAllowlist),
 		NoWeb:             raw.NoWeb,
-		NoPlan:            raw.NoPlan,
+		NoPlan:            noPlan,
+		ShowHeader:        raw.ShowHeader,
+		ShowTools:         raw.ShowTools,
 		Quiet:             raw.Quiet,
 		JSON:              jsonOutput,
 		Verbose:           raw.Verbose,

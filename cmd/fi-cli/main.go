@@ -45,6 +45,11 @@ func newRootCmd() *cobra.Command {
 			}
 			if cfg.Quiet {
 				cfg.NoPlan = true
+				cfg.ShowHeader = false
+				cfg.ShowTools = false
+			}
+			if cfg.Verbose {
+				cfg.ShowTools = true
 			}
 
 			apiKey := os.Getenv("FICLI_API_KEY")
@@ -135,7 +140,7 @@ func newRootCmd() *cobra.Command {
 				logFile = file
 				writer = io.MultiWriter(os.Stdout, logFile)
 			}
-			renderer := render.NewStdoutRenderer(writer, cfg.Verbose, cfg.Quiet, cfg.NoPlan)
+			renderer := render.NewStdoutRenderer(writer, cfg.Verbose, cfg.Quiet, cfg.NoPlan, cfg.ShowHeader, cfg.ShowTools)
 			ag = agent.NewAgent(client, registry, renderer, logger, cfg)
 			runResult, runErr := ag.Run(ctx, question, repoRoot, repoCtx)
 			_ = renderer.Close()
@@ -158,8 +163,11 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().String("timeout", config.DefaultTimeout.String(), "Timeout (e.g. 60s)")
 	cmd.Flags().Bool("unsafe-shell", false, "Allow unsafe shell commands")
 	cmd.Flags().StringSlice("shell-allow", nil, "Allow shell command prefix (repeatable)")
+	cmd.Flags().Bool("plan", false, "Generate and show a short plan")
 	cmd.Flags().Bool("no-web", false, "Disable web search")
-	cmd.Flags().Bool("no-plan", false, "Disable plan output and generation")
+	cmd.Flags().Bool("no-plan", true, "Disable plan output and generation")
+	cmd.Flags().Bool("show-header", false, "Show header lines")
+	cmd.Flags().Bool("show-tools", false, "Show tool call summaries")
 	cmd.Flags().Bool("quiet", false, "Only print final answer")
 	cmd.Flags().Bool("json", false, "Output JSON only")
 	cmd.Flags().Bool("verbose", false, "Enable verbose logging")
