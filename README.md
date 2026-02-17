@@ -13,6 +13,10 @@ fi.ashref.tn is a terminal-native agent orchestrator that answers repository que
    install -m 0755 fi ~/.local/bin/fi
    export PATH="$HOME/.local/bin:$PATH"
    ```
+   Zsh note: `fi` is a reserved keyword in zsh. Add this to `~/.zshrc` once:
+   ```bash
+   alias fi='command fi'
+   ```
 3. Set your API key and model:
    ```bash
    export FICLI_API_KEY=...
