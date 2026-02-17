@@ -62,6 +62,7 @@ var (
 	}
 	networkTools = map[string]struct{}{
 		"curl": {}, "wget": {}, "ssh": {}, "scp": {}, "nc": {}, "netcat": {},
+		"ping": {}, "dig": {}, "nslookup": {}, "whois": {}, "traceroute": {},
 	}
 	destructivePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\brm\b`),
