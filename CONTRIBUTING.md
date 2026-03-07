@@ -8,7 +8,7 @@
 ## Build
 
 ```bash
-go build -o fi ./cmd/fi-cli
+go build -o vcli ./cmd/fi-cli
 ```
 
 ## Test

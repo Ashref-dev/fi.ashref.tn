@@ -5,6 +5,7 @@
 - Shell tool is disabled by default (read-only mode uses grep only).
 - Shell tool is enabled only when a command allowlist is configured.
 - Allowlist entries are command prefixes (e.g., `git` or `git status`).
+- You can inspect active policy using `vcli policy check` and validate commands with `vcli policy test "<command>"`.
 - Potentially destructive commands are blocked unless `--unsafe-shell` is explicitly set.
 - Network utilities like `curl` are blocked by default even if allowlisted.
 - Interactive commands (vim/less/etc.) are not allowed in v1.

@@ -8,21 +8,21 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
 
+	"fi-cli/internal/policy"
 	"fi-cli/internal/util"
 )
 
 type ShellTool struct {
-	allowlist [][]string
+	allowlist []string
 }
 
 // NewShellTool constructs a shell tool.
 func NewShellTool(allowlist []string) *ShellTool {
-	return &ShellTool{allowlist: normalizeAllowlist(allowlist)}
+	return &ShellTool{allowlist: allowlist}
 }
 
 func (s *ShellTool) Name() string { return "shell" }
@@ -56,27 +56,6 @@ type shellOutput struct {
 	Truncated  bool   `json:"truncated"`
 }
 
-var (
-	interactive = map[string]struct{}{
-		"vim": {}, "vi": {}, "nano": {}, "less": {}, "more": {}, "man": {}, "top": {}, "htop": {}, "ssh": {}, "sftp": {},
-	}
-	networkTools = map[string]struct{}{
-		"curl": {}, "wget": {}, "ssh": {}, "scp": {}, "nc": {}, "netcat": {},
-		"ping": {}, "dig": {}, "nslookup": {}, "whois": {}, "traceroute": {},
-	}
-	destructivePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\brm\b`),
-		regexp.MustCompile(`(?i)\bmkfs\b`),
-		regexp.MustCompile(`(?i)\bdd\b`),
-		regexp.MustCompile(`(?i)\bshutdown\b`),
-		regexp.MustCompile(`(?i)\breboot\b`),
-		regexp.MustCompile(`(?i)\bkill\s+-9\b`),
-		regexp.MustCompile(`(?i):\(\)\{`),
-		regexp.MustCompile(`(?i)chmod\s+-R\s+777\s+/`),
-		regexp.MustCompile(`(?i)(>|>>)[\s]*(/etc|/bin|/usr|/var|/lib|/sbin|/System|/Library)`),
-	}
-)
-
 func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage, meta Meta) (Result, error) {
 	var args shellInput
 	if err := json.Unmarshal(input, &args); err != nil {
@@ -86,36 +65,12 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage, meta Met
 		return Result{}, errors.New("command is required")
 	}
 
-	cmdParts, err := splitCommand(args.Command)
-	if err != nil {
-		return Result{}, err
+	decision := policy.EvaluateShellCommand(args.Command, meta.UnsafeShell, s.allowlist)
+	if !decision.Allowed {
+		return Result{}, errors.New(decision.Reason)
 	}
-	if len(cmdParts) == 0 {
-		return Result{}, errors.New("command is required")
-	}
-	cmdName := cmdParts[0]
-	cmdKey := strings.ToLower(cmdName)
-
-	if _, ok := interactive[cmdKey]; ok {
-		return Result{}, fmt.Errorf("interactive commands are not allowed: %s", cmdName)
-	}
-
-	if !meta.UnsafeShell {
-		if len(s.allowlist) == 0 {
-			return Result{}, errors.New("shell allowlist is empty")
-		}
-		if !s.allowed(cmdParts) {
-			return Result{}, fmt.Errorf("command not allowlisted: %s", cmdName)
-		}
-		if _, ok := networkTools[cmdKey]; ok {
-			return Result{}, fmt.Errorf("network commands are blocked by default: %s", cmdName)
-		}
-		for _, re := range destructivePatterns {
-			if re.MatchString(args.Command) {
-				return Result{}, fmt.Errorf("blocked potentially destructive command")
-			}
-		}
-	}
+	cmdParts := decision.CommandParts
+	cmdName := decision.CommandName
 
 	cwd := meta.RepoRoot
 	if strings.TrimSpace(args.Cwd) != "" {
@@ -138,7 +93,7 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage, meta Met
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	start := time.Now()
-	err = cmd.Run()
+	err := cmd.Run()
 	duration := time.Since(start).Milliseconds()
 
 	exitCode := 0
@@ -201,92 +156,4 @@ func minimalEnv() []string {
 		return nil
 	}
 	return nil
-}
-
-func splitCommand(input string) ([]string, error) {
-	var args []string
-	var buf bytes.Buffer
-	inSingle := false
-	inDouble := false
-	escape := false
-
-	for _, r := range input {
-		if escape {
-			buf.WriteRune(r)
-			escape = false
-			continue
-		}
-		if r == '\\' && !inSingle {
-			escape = true
-			continue
-		}
-		if r == '\'' && !inDouble {
-			inSingle = !inSingle
-			continue
-		}
-		if r == '"' && !inSingle {
-			inDouble = !inDouble
-			continue
-		}
-		if (r == ' ' || r == '\t' || r == '\n') && !inSingle && !inDouble {
-			if buf.Len() > 0 {
-				args = append(args, buf.String())
-				buf.Reset()
-			}
-			continue
-		}
-		buf.WriteRune(r)
-	}
-	if escape || inSingle || inDouble {
-		return nil, errors.New("unterminated quote or escape in command")
-	}
-	if buf.Len() > 0 {
-		args = append(args, buf.String())
-	}
-	return args, nil
-}
-
-func normalizeAllowlist(list []string) [][]string {
-	out := make([][]string, 0, len(list))
-	for _, item := range list {
-		trimmed := strings.TrimSpace(item)
-		if trimmed == "" {
-			continue
-		}
-		tokens, err := splitCommand(trimmed)
-		if err != nil || len(tokens) == 0 {
-			continue
-		}
-		for i := range tokens {
-			tokens[i] = strings.ToLower(tokens[i])
-		}
-		out = append(out, tokens)
-	}
-	return out
-}
-
-func (s *ShellTool) allowed(cmdParts []string) bool {
-	if len(s.allowlist) == 0 || len(cmdParts) == 0 {
-		return false
-	}
-	normalized := make([]string, len(cmdParts))
-	for i, part := range cmdParts {
-		normalized[i] = strings.ToLower(part)
-	}
-	for _, entry := range s.allowlist {
-		if len(normalized) < len(entry) {
-			continue
-		}
-		match := true
-		for i := range entry {
-			if normalized[i] != entry[i] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
 }

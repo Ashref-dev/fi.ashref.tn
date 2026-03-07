@@ -1,104 +1,98 @@
-# fi.ashref.tn
+# V-CLI
 
-fi.ashref.tn is a terminal-native agent orchestrator that answers repository questions by reasoning over local files (and optionally the web). The CLI command is `fi`.
+V-CLI is a terminal-native agent orchestrator for repository Q&A. It prioritizes local evidence (grep/context), can optionally use web search, and is read-only by default.
 
-## Quickstart
+## Install
 
-1. Build the binary:
+1. Build:
    ```bash
-   go build -o fi ./cmd/fi-cli
+   go build -o vcli ./cmd/fi-cli
    ```
-2. Add it to your PATH:
+2. Install into PATH:
    ```bash
-   install -m 0755 fi ~/.local/bin/fi
+   install -m 0755 vcli ~/.local/bin/vcli
    export PATH="$HOME/.local/bin:$PATH"
    ```
-   Zsh note: `fi` is a reserved keyword in zsh. Add this to `~/.zshrc` once:
+3. Optional alias:
    ```bash
-   alias fi='command fi'
+   alias v='vcli'
    ```
-3. Set your API key and model:
+4. Initialize config:
    ```bash
-   export FICLI_API_KEY=...
-   export FICLI_MODEL=openrouter/pony-alpha
+   vcli init
    ```
-4. Run it:
+5. Edit the generated config file and set `api_key`.
+6. Run:
    ```bash
-   fi "question here"
+   vcli "what's the tech stack here?"
    ```
+
+## First-Run Onboarding
+
+If no API key is configured, V-CLI prints onboarding instructions and exits with code `2`.
 
 ## Configuration
 
-Environment variables:
-
-- `FICLI_API_KEY` (preferred; falls back to `OPENROUTER_API_KEY` or `OPENAI_API_KEY`)
-- `FICLI_MODEL` (model override)
-- `FICLI_OPENROUTER_BASE_URL` (default: `https://openrouter.ai/api/v1`)
-- `FICLI_MAX_STEPS` (default: 8)
-- `FICLI_TIMEOUT_SECONDS` (default: 60)
-- `FICLI_HTTP_REFERER`, `FICLI_TITLE` (optional OpenRouter attribution headers)
-- `FICLI_PERSIST_RUNS`, `FICLI_NO_PLAN`, `FICLI_QUIET`, `FICLI_LOG_FILE`
-- `FICLI_HISTORY_LINES` (default: 50), `FICLI_NO_HISTORY`
-- `FICLI_SHOW_HEADER`, `FICLI_SHOW_TOOLS`, `FICLI_NO_TOOLS`
-- `FICLI_SHELL_ALLOWLIST` (comma-separated command prefixes; enables shell tool)
-- `EXA_API_KEY` (optional, enables web search)
-
-Config file (optional):
-
+Config file locations:
 - `~/.config/fi.ashref.tn/config.yaml`
 - `~/.config/fi.ashref.tn/config.json`
-- macOS also supports `~/Library/Application Support/fi.ashref.tn/config.yaml`
+- `~/Library/Application Support/fi.ashref.tn/config.yaml` (macOS)
 
-Shell safety:
-
-- By default, `fi` is read-only (grep only). The shell tool is disabled unless you configure an allowlist.
-- Allowlist entries are command prefixes. For example, `git` allows any `git ...` command, while `git status` allows only `git status ...`.
-- Network utilities like `curl` remain blocked unless `--unsafe-shell` is set.
-
-Example config (`~/.config/fi.ashref.tn/config.yaml`):
+Example config:
 
 ```yaml
-api_key: your_openrouter_key_here
+api_key: "your_openrouter_key"
 model: openrouter/pony-alpha
+openrouter_base_url: "https://openrouter.ai/api/v1"
+response_mode: quick
 show_header: false
 show_tools: true
 no_plan: true
-shell_allowlist:
-  - git status
-  - git log
-  - aws s3 ls
+# shell_allowlist:
+#   - git status
+#   - git log
 ```
+
+Environment variables:
+- `FICLI_API_KEY` (preferred; fallback: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)
+- `FICLI_MODEL`, `FICLI_OPENROUTER_BASE_URL`
+- `FICLI_TIMEOUT_SECONDS`, `FICLI_MAX_STEPS`
+- `FICLI_RESPONSE_MODE` (`quick`, `operator`, `explain`)
+- `FICLI_SHOW_HEADER`, `FICLI_SHOW_TOOLS`, `FICLI_NO_TOOLS`, `FICLI_NO_PLAN`
+- `FICLI_SHELL_ALLOWLIST`, `FICLI_LOG_FILE`, `FICLI_PERSIST_RUNS`
+- `FICLI_HISTORY_LINES`, `FICLI_NO_HISTORY`
+- `EXA_API_KEY` (optional; enables `exa_search`)
+
+## Safety Policy
+
+Default mode is `read-only` (shell disabled).
+
+Use:
+```bash
+vcli policy check
+vcli policy test "git status -sb"
+```
+
+Modes:
+- `read-only`: grep/context only
+- `allowlist`: shell enabled only for configured command prefixes
+- `unsafe`: enabled explicitly with `--unsafe-shell`
 
 ## Usage
 
 ```bash
-fi "what is the tech stack here?"
-fi --no-web "where is auth implemented?"
-fi --json "summarize the repo"
-fi --shell-allow "git status" "show git status"
-fi --unsafe-shell "run tests and summarize failures"
+vcli "where is auth implemented?"
+vcli --mode operator "how do I run this project?"
+vcli --plan --show-header "summarize architecture"
+vcli --no-tools "quick summary"
+vcli --shell-allow "git status" "show git status"
 ```
 
-## Output customization
-
-By default, output is concise and includes tool summaries:
-
+Default output is concise:
+```text
+tool: grep ok (12ms, 8 lines, 644 bytes)
+v: <answer>
 ```
-tool: grep ok (6ms, 12 lines, 1831 bytes)
-fi: <answer>
-```
-
-Use flags to show more detail:
-
-- `--show-header` to include run metadata.
-- `--no-tools` to hide tool call summaries.
-- `--plan` to generate and show a plan.
-
-## Troubleshooting
-
-- Missing API key: set `FICLI_API_KEY` (or `OPENROUTER_API_KEY`/`OPENAI_API_KEY`) before running.
-- `rg` not installed: the grep tool falls back to a slower Go scanner.
-- Exa key missing: web search is disabled automatically.
 
 ## License
 

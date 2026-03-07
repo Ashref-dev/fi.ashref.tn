@@ -92,14 +92,15 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	}})
 
 	var plan []string
+	commandIntent := isCommandIntent(question)
 	if !a.cfg.NoPlan {
 		plan = a.generatePlan(ctx, question, repoCtx)
 		emit(events.Event{Type: events.PlanGenerated, Timestamp: time.Now(), Payload: events.PlanGeneratedPayload{Plan: plan}})
 	}
 
 	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(systemPrompt()),
-		openai.DeveloperMessage(developerPrompt(a.tools.Names(), !a.cfg.NoWeb, a.cfg.ShellAllowlist)),
+		openai.SystemMessage(systemPrompt(a.cfg.ResponseMode)),
+		openai.DeveloperMessage(developerPrompt(a.tools.Names(), !a.cfg.NoWeb, a.cfg.ShellAllowlist, commandIntent)),
 		openai.DeveloperMessage("Repository context:\n" + repoCtx.Summary()),
 	}
 	if !a.cfg.NoPlan && len(plan) > 0 {
@@ -247,7 +248,7 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 
 func (a *Agent) generatePlan(ctx context.Context, question string, repoCtx repo.RepoContext) []string {
 	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(systemPrompt()),
+		openai.SystemMessage(systemPrompt(a.cfg.ResponseMode)),
 		openai.DeveloperMessage(planPrompt()),
 		openai.DeveloperMessage("Repository context:\n" + repoCtx.Summary()),
 		openai.UserMessage(question),

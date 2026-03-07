@@ -13,16 +13,17 @@ import (
 )
 
 const (
-	DefaultModel       = "openrouter/pony-alpha"
-	DefaultMaxSteps    = 8
-	DefaultTimeout     = 60 * time.Second
-	DefaultBaseURL     = "https://openrouter.ai/api/v1"
-	DefaultMaxContext  = 80 * 1024
-	DefaultGrepLines   = 200
-	DefaultGrepBytes   = 20 * 1024
-	DefaultShellBytes  = 20 * 1024
-	DefaultWebBytes    = 30 * 1024
-	DefaultMaxFileSize = 32 * 1024
+	DefaultModel        = "openrouter/pony-alpha"
+	DefaultMaxSteps     = 8
+	DefaultTimeout      = 60 * time.Second
+	DefaultBaseURL      = "https://openrouter.ai/api/v1"
+	DefaultResponseMode = "quick"
+	DefaultMaxContext   = 80 * 1024
+	DefaultGrepLines    = 200
+	DefaultGrepBytes    = 20 * 1024
+	DefaultShellBytes   = 20 * 1024
+	DefaultWebBytes     = 30 * 1024
+	DefaultMaxFileSize  = 32 * 1024
 )
 
 // ToolLimits controls max output sizes for tools and context.
@@ -49,6 +50,7 @@ type Config struct {
 	ShowHeader        bool
 	ShowTools         bool
 	NoTools           bool
+	ResponseMode      string
 	Quiet             bool
 	JSON              bool
 	Verbose           bool
@@ -77,6 +79,7 @@ type rawConfig struct {
 	ShowHeader         bool       `mapstructure:"show_header"`
 	ShowTools          bool       `mapstructure:"show_tools"`
 	NoTools            bool       `mapstructure:"no_tools"`
+	ResponseMode       string     `mapstructure:"response_mode"`
 	Quiet              bool       `mapstructure:"quiet"`
 	JSON               bool       `mapstructure:"json"`
 	Verbose            bool       `mapstructure:"verbose"`
@@ -111,6 +114,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("show_header", false)
 	v.SetDefault("show_tools", true)
 	v.SetDefault("no_tools", false)
+	v.SetDefault("response_mode", DefaultResponseMode)
 	v.SetDefault("quiet", false)
 	v.SetDefault("json", false)
 	v.SetDefault("verbose", false)
@@ -138,6 +142,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 		_ = v.BindPFlag("show_header", cmd.Flags().Lookup("show-header"))
 		_ = v.BindPFlag("show_tools", cmd.Flags().Lookup("show-tools"))
 		_ = v.BindPFlag("no_tools", cmd.Flags().Lookup("no-tools"))
+		_ = v.BindPFlag("response_mode", cmd.Flags().Lookup("mode"))
 		_ = v.BindPFlag("quiet", cmd.Flags().Lookup("quiet"))
 		_ = v.BindPFlag("json", cmd.Flags().Lookup("json"))
 		_ = v.BindPFlag("verbose", cmd.Flags().Lookup("verbose"))
@@ -227,6 +232,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 		ShowHeader:        raw.ShowHeader,
 		ShowTools:         showTools,
 		NoTools:           raw.NoTools,
+		ResponseMode:      normalizeResponseMode(raw.ResponseMode),
 		Quiet:             raw.Quiet,
 		JSON:              jsonOutput,
 		Verbose:           raw.Verbose,
@@ -256,6 +262,9 @@ func Load(cmd *cobra.Command) (Config, error) {
 	if cfg.HistoryLines < 0 {
 		cfg.HistoryLines = 0
 	}
+	if cfg.ResponseMode == "" {
+		cfg.ResponseMode = DefaultResponseMode
+	}
 
 	if cfg.ToolLimits.ContextMaxBytes <= 0 {
 		cfg.ToolLimits.ContextMaxBytes = DefaultMaxContext
@@ -280,6 +289,19 @@ func Load(cmd *cobra.Command) (Config, error) {
 }
 
 func loadConfigFile(v *viper.Viper) error {
+	for _, path := range ConfigCandidatePaths() {
+		if _, err := os.Stat(path); err == nil {
+			v.SetConfigFile(path)
+			if err := v.ReadInConfig(); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func ConfigSearchBases() []string {
 	var bases []string
 	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
 		bases = append(bases,
@@ -299,25 +321,41 @@ func loadConfigFile(v *viper.Viper) error {
 			filepath.Join(home, ".config", "fi-cli"),
 		)
 	}
+	return uniqStrings(bases)
+}
+
+func ConfigCandidatePaths() []string {
 	var candidates []string
-	for _, base := range bases {
+	for _, base := range ConfigSearchBases() {
 		candidates = append(candidates,
 			filepath.Join(base, "config.yaml"),
 			filepath.Join(base, "config.yml"),
 			filepath.Join(base, "config.json"),
 		)
 	}
+	return uniqStrings(candidates)
+}
 
-	for _, path := range candidates {
+func ExistingConfigPath() string {
+	for _, path := range ConfigCandidatePaths() {
 		if _, err := os.Stat(path); err == nil {
-			v.SetConfigFile(path)
-			if err := v.ReadInConfig(); err != nil {
-				return err
-			}
-			return nil
+			return path
 		}
 	}
-	return nil
+	return ""
+}
+
+func PreferredConfigPath() string {
+	for _, base := range ConfigSearchBases() {
+		if strings.Contains(base, "fi.ashref.tn") {
+			return filepath.Join(base, "config.yaml")
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "config.yaml"
+	}
+	return filepath.Join(home, ".config", "fi.ashref.tn", "config.yaml")
 }
 
 func splitCSV(input string) []string {
@@ -347,6 +385,35 @@ func normalizeAllowlist(list []string) []string {
 		}
 		seen[key] = struct{}{}
 		out = append(out, trimmed)
+	}
+	return out
+}
+
+func normalizeResponseMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "quick", "":
+		return "quick"
+	case "operator":
+		return "operator"
+	case "explain":
+		return "explain"
+	default:
+		return "quick"
+	}
+}
+
+func uniqStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
 	}
 	return out
 }

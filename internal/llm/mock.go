@@ -8,8 +8,8 @@ import (
 
 // MockClient is a deterministic client for tests and demos.
 type MockClient struct {
-	mu    sync.Mutex
-	calls int
+	mu        sync.Mutex
+	toolCalls int
 }
 
 // NewMockClient returns a simple mock.
@@ -20,12 +20,14 @@ func NewMockClient() *MockClient {
 func (m *MockClient) Create(ctx context.Context, req Request) (Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls++
 
-	if m.calls == 1 {
+	// Plan generation calls usually do not include tools.
+	if len(req.Tools) == 0 {
 		return Response{Content: "- Review repository context\n- Use grep to find signals\n- Summarize findings with citations"}, nil
 	}
-	if m.calls == 2 {
+
+	m.toolCalls++
+	if m.toolCalls == 1 {
 		args, _ := json.Marshal(map[string]any{"pattern": "FICLI", "case_sensitive": false, "max_results": 20})
 		return Response{ToolCalls: []ToolCall{{ID: "call_1", Name: "grep", Arguments: args}}}, nil
 	}

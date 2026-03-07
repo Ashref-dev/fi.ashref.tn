@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"fi-cli/internal/policy"
 )
 
 func TestShellToolBlocksDestructive(t *testing.T) {
@@ -35,19 +37,12 @@ func TestShellToolBlocksUnknown(t *testing.T) {
 
 func TestShellToolAllowlistPrefix(t *testing.T) {
 	tool := NewShellTool([]string{"git status"})
-	cmdParts, err := splitCommand("git status -sb")
-	if err != nil {
-		t.Fatalf("split failed: %v", err)
+	allowed := policy.EvaluateShellCommand("git status -sb", false, tool.allowlist)
+	if !allowed.Allowed {
+		t.Fatalf("expected git status prefix to be allowed: %s", allowed.Reason)
 	}
-	if !tool.allowed(cmdParts) {
-		t.Fatalf("expected git status prefix to be allowed")
-	}
-
-	cmdParts, err = splitCommand("git commit -m test")
-	if err != nil {
-		t.Fatalf("split failed: %v", err)
-	}
-	if tool.allowed(cmdParts) {
+	blocked := policy.EvaluateShellCommand("git commit -m test", false, tool.allowlist)
+	if blocked.Allowed {
 		t.Fatalf("expected git commit to be blocked by allowlist")
 	}
 }

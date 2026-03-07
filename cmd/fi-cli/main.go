@@ -14,6 +14,7 @@ import (
 	"fi-cli/internal/agent"
 	"fi-cli/internal/config"
 	"fi-cli/internal/llm"
+	"fi-cli/internal/policy"
 	"fi-cli/internal/render"
 	"fi-cli/internal/repo"
 	"fi-cli/internal/tools"
@@ -32,12 +33,15 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "fi [question]",
-		Short:         "fi - terminal-native agent orchestrator",
+		Use:           "vcli [question]",
+		Short:         "V-CLI - terminal-native agent orchestrator",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args:          cobra.MinimumNArgs(1),
+		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
 			question := strings.Join(args, " ")
 			cfg, err := config.Load(cmd)
 			if err != nil {
@@ -64,7 +68,8 @@ func newRootCmd() *cobra.Command {
 			}
 			mockMode := os.Getenv("FICLI_MOCK_LLM") == "1"
 			if apiKey == "" && !mockMode {
-				fmt.Fprintln(os.Stderr, "FICLI_API_KEY is required")
+				onboardingPath := config.PreferredConfigPath()
+				fmt.Fprintf(os.Stderr, "V-CLI onboarding required.\n1) Run: vcli init\n2) Add api_key in: %s\n3) Run: vcli \"your question\"\n", onboardingPath)
 				os.Exit(2)
 			}
 
@@ -158,6 +163,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("model", config.DefaultModel, "Model name")
+	cmd.Flags().String("mode", config.DefaultResponseMode, "Response mode: quick|operator|explain")
 	cmd.Flags().Int("max-steps", config.DefaultMaxSteps, "Maximum tool steps")
 	cmd.Flags().String("repo", ".", "Repository path")
 	cmd.Flags().String("timeout", config.DefaultTimeout.String(), "Timeout (e.g. 60s)")
@@ -176,6 +182,103 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().Int("history-lines", 50, "Number of shell history lines to include")
 	cmd.Flags().Bool("no-history", false, "Disable shell history context")
 
+	cmd.AddCommand(newInitCmd())
+	cmd.AddCommand(newPolicyCmd())
+
+	return cmd
+}
+
+func newInitCmd() *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize V-CLI config file",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := config.ExistingConfigPath()
+			if target == "" {
+				target = config.PreferredConfigPath()
+			} else if !force {
+				fmt.Fprintf(os.Stdout, "Config already exists: %s\n", target)
+				fmt.Fprintln(os.Stdout, "Use --force to overwrite. Next: set api_key and run `vcli \"your question\"`.")
+				return nil
+			}
+
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+
+			content := strings.TrimSpace(`
+# V-CLI configuration
+api_key: ""
+model: openrouter/pony-alpha
+openrouter_base_url: "https://openrouter.ai/api/v1"
+response_mode: quick
+show_header: false
+show_tools: true
+no_plan: true
+# shell_allowlist:
+#   - git status
+#   - git log
+`) + "\n"
+
+			if err := os.WriteFile(target, []byte(content), 0o600); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stdout, "Initialized config: %s\n", target)
+			fmt.Fprintln(os.Stdout, "Next steps:")
+			fmt.Fprintln(os.Stdout, "1) Set `api_key` in the config file")
+			fmt.Fprintln(os.Stdout, "2) Optional shell alias: alias v='vcli'")
+			fmt.Fprintln(os.Stdout, "3) Run: vcli \"what's the tech stack here?\"")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing config")
+	return cmd
+}
+
+func newPolicyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "policy",
+		Short: "Inspect shell safety policy",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "check",
+		Short: "Show current safety mode and allowlist",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(nil)
+			if err != nil {
+				return err
+			}
+			mode := policy.ResolveShellMode(cfg.UnsafeShell, cfg.ShellAllowlist)
+			fmt.Fprintf(os.Stdout, "mode: %s\n", mode)
+			fmt.Fprintf(os.Stdout, "shell_enabled: %t\n", mode != policy.ShellModeReadOnly)
+			fmt.Fprintf(os.Stdout, "allowlist_entries: %d\n", len(cfg.ShellAllowlist))
+			for _, entry := range cfg.ShellAllowlist {
+				fmt.Fprintf(os.Stdout, "- %s\n", entry)
+			}
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "test <command>",
+		Short: "Test whether a shell command is allowed by current policy",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(nil)
+			if err != nil {
+				return err
+			}
+			command := strings.Join(args, " ")
+			decision := policy.EvaluateShellCommand(command, cfg.UnsafeShell, cfg.ShellAllowlist)
+			fmt.Fprintf(os.Stdout, "mode: %s\n", decision.Mode)
+			fmt.Fprintf(os.Stdout, "allowed: %t\n", decision.Allowed)
+			fmt.Fprintf(os.Stdout, "reason: %s\n", decision.Reason)
+			return nil
+		},
+	})
 	return cmd
 }
 
