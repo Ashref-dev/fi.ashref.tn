@@ -32,6 +32,9 @@ type ToolLimits struct {
 	GrepMaxBytes    int `mapstructure:"grep_max_bytes"`
 	ShellMaxBytes   int `mapstructure:"shell_max_bytes"`
 	WebMaxBytes     int `mapstructure:"web_max_bytes"`
+	GrepMaxCalls    int `mapstructure:"grep_max_calls"`
+	ShellMaxCalls   int `mapstructure:"shell_max_calls"`
+	WebMaxCalls     int `mapstructure:"web_max_calls"`
 	ContextMaxBytes int `mapstructure:"context_max_bytes"`
 	MaxFileBytes    int `mapstructure:"max_file_bytes"`
 }
@@ -128,6 +131,9 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("tool_limits.grep_max_bytes", DefaultGrepBytes)
 	v.SetDefault("tool_limits.shell_max_bytes", DefaultShellBytes)
 	v.SetDefault("tool_limits.web_max_bytes", DefaultWebBytes)
+	v.SetDefault("tool_limits.grep_max_calls", 30)
+	v.SetDefault("tool_limits.shell_max_calls", 30)
+	v.SetDefault("tool_limits.web_max_calls", 30)
 	v.SetDefault("tool_limits.context_max_bytes", DefaultMaxContext)
 	v.SetDefault("tool_limits.max_file_bytes", DefaultMaxFileSize)
 
@@ -283,6 +289,15 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 	if cfg.ToolLimits.MaxFileBytes <= 0 {
 		cfg.ToolLimits.MaxFileBytes = DefaultMaxFileSize
+	}
+	if cfg.ToolLimits.GrepMaxCalls <= 0 {
+		cfg.ToolLimits.GrepMaxCalls = 30
+	}
+	if cfg.ToolLimits.ShellMaxCalls <= 0 {
+		cfg.ToolLimits.ShellMaxCalls = 30
+	}
+	if cfg.ToolLimits.WebMaxCalls <= 0 {
+		cfg.ToolLimits.WebMaxCalls = 30
 	}
 
 	return cfg, nil

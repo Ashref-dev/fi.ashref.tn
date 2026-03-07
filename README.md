@@ -26,6 +26,11 @@ fi-cli is a terminal-native agent orchestrator for repository Q&A. It prioritize
    ```bash
    fi-cli "what's the tech stack here?"
    ```
+7. Inspect runtime policy/settings any time:
+   ```bash
+   fi-cli about
+   fi-cli policy check
+   ```
 
 ## First-Run Onboarding
 
@@ -48,6 +53,10 @@ response_mode: quick
 show_header: false
 show_tools: true
 no_plan: true
+tool_limits:
+  grep_max_calls: 30
+  shell_max_calls: 30
+  web_max_calls: 30
 # shell_allowlist:
 #   - git status
 #   - git log
@@ -77,6 +86,11 @@ Modes:
 - `read-only`: grep/context only
 - `allowlist`: shell enabled only for configured command prefixes
 - `unsafe`: enabled explicitly with `--unsafe-shell`
+
+Tool call budgets (default):
+- `grep`: 30 calls/run
+- `shell`: 30 calls/run
+- `exa_search`: 30 calls/run
 
 ## Usage
 

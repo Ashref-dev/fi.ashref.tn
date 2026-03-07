@@ -121,6 +121,7 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	}
 
 	steps := 0
+	toolUsage := map[string]int{}
 	for steps < a.cfg.MaxSteps {
 		steps++
 		response, err := a.client.Create(ctx, llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice})
@@ -170,6 +171,17 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 		messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
 
 		for _, call := range response.ToolCalls {
+			if !a.withinToolBudget(call.Name, toolUsage) {
+				err := fmt.Errorf("tool call limit reached for %s", call.Name)
+				payload := map[string]any{"error": err.Error(), "duration_ms": 0}
+				record := ToolCallRecord{ToolName: call.Name, Input: sanitizeInput(call.Arguments), Output: payload, Status: "error", StartedAt: time.Now(), DurationMs: 0}
+				result.ToolCalls = append(result.ToolCalls, record)
+				emit(events.Event{Type: events.ToolCallFailed, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{ToolName: call.Name, Status: "error", Preview: err.Error(), DurationMs: 0, LineCount: 1, ByteCount: len(err.Error()), Truncated: false}})
+				payloadBytes, _ := json.Marshal(payload)
+				messages = append(messages, openai.ToolMessage(string(payloadBytes), call.ID))
+				continue
+			}
+
 			tool, ok := a.tools.Get(call.Name)
 			if !ok {
 				err := fmt.Errorf("unknown tool: %s", call.Name)
@@ -194,6 +206,7 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 			}
 
 			res, err := tool.Execute(ctx, call.Arguments, meta)
+			toolUsage[call.Name]++
 			duration := time.Since(start).Milliseconds()
 			if err != nil {
 				payload := map[string]any{"error": err.Error(), "duration_ms": duration}
@@ -299,6 +312,20 @@ func (a *Agent) streamFinal(ctx context.Context, req llm.Request, emit func(even
 		return builder.String(), err
 	}
 	return builder.String(), nil
+}
+
+func (a *Agent) withinToolBudget(toolName string, usage map[string]int) bool {
+	current := usage[toolName]
+	switch toolName {
+	case "grep":
+		return current < a.cfg.ToolLimits.GrepMaxCalls
+	case "shell":
+		return current < a.cfg.ToolLimits.ShellMaxCalls
+	case "exa_search":
+		return current < a.cfg.ToolLimits.WebMaxCalls
+	default:
+		return true
+	}
 }
 
 func sanitizeInput(args json.RawMessage) any {

@@ -183,6 +183,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().Bool("no-history", false, "Disable shell history context")
 
 	cmd.AddCommand(newInitCmd())
+	cmd.AddCommand(newAboutCmd())
 	cmd.AddCommand(newPolicyCmd())
 
 	return cmd
@@ -217,6 +218,10 @@ response_mode: quick
 show_header: false
 show_tools: true
 no_plan: true
+tool_limits:
+  grep_max_calls: 30
+  shell_max_calls: 30
+  web_max_calls: 30
 # shell_allowlist:
 #   - git status
 #   - git log
@@ -280,6 +285,31 @@ func newPolicyCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+func newAboutCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "about",
+		Short: "Show product, safety, and configuration details",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(nil)
+			if err != nil {
+				return err
+			}
+			mode := policy.ResolveShellMode(cfg.UnsafeShell, cfg.ShellAllowlist)
+			fmt.Fprintln(os.Stdout, "fi-cli")
+			fmt.Fprintln(os.Stdout, "- Default behavior: read-only repository analysis (grep/context)")
+			fmt.Fprintf(os.Stdout, "- Active shell mode: %s\n", mode)
+			fmt.Fprintf(os.Stdout, "- Tool call caps: grep=%d shell=%d web=%d\n", cfg.ToolLimits.GrepMaxCalls, cfg.ToolLimits.ShellMaxCalls, cfg.ToolLimits.WebMaxCalls)
+			fmt.Fprintf(os.Stdout, "- Response mode: %s\n", cfg.ResponseMode)
+			fmt.Fprintln(os.Stdout, "- Config search order:")
+			for _, candidate := range config.ConfigCandidatePaths() {
+				fmt.Fprintf(os.Stdout, "  - %s\n", candidate)
+			}
+			return nil
+		},
+	}
 }
 
 func buildLogger(verbose bool) *zap.Logger {
