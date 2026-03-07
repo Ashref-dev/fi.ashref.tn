@@ -38,7 +38,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 			if r.quiet || !r.showHeader {
 				return
 			}
-			fmt.Fprintf(r.w, "V-CLI v%s | repo: %s | model: %s | run: %s\n", payload.Version, payload.RepoRoot, payload.Model, payload.RunID)
+			fmt.Fprintf(r.w, "fi-cli v%s | repo: %s | model: %s | run: %s\n", payload.Version, payload.RepoRoot, payload.Model, payload.RunID)
 			fmt.Fprintf(r.w, "Started: %s\n", payload.StartedAt.Format("2006-01-02T15:04:05Z07:00"))
 		}
 	case events.PlanGenerated:
@@ -85,7 +85,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 	case events.ModelDelta:
 		if payload, ok := event.Payload.(events.ModelDeltaPayload); ok {
 			if !r.printedFinalHeader {
-				fmt.Fprint(r.w, "v: ")
+				fmt.Fprint(r.w, "fi: ")
 				r.printedFinalHeader = true
 			}
 			if payload.Delta != "" {
@@ -103,7 +103,7 @@ func (r *StdoutRenderer) Emit(event events.Event) {
 				return
 			}
 			if !r.printedFinalHeader {
-				fmt.Fprint(r.w, "v: ")
+				fmt.Fprint(r.w, "fi: ")
 				r.printedFinalHeader = true
 			}
 			fmt.Fprintln(r.w, payload.Answer)

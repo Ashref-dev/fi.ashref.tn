@@ -33,8 +33,8 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "vcli [question]",
-		Short:         "V-CLI - terminal-native agent orchestrator",
+		Use:           "fi-cli [question]",
+		Short:         "fi-cli - terminal-native agent orchestrator",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
@@ -69,7 +69,7 @@ func newRootCmd() *cobra.Command {
 			mockMode := os.Getenv("FICLI_MOCK_LLM") == "1"
 			if apiKey == "" && !mockMode {
 				onboardingPath := config.PreferredConfigPath()
-				fmt.Fprintf(os.Stderr, "V-CLI onboarding required.\n1) Run: vcli init\n2) Add api_key in: %s\n3) Run: vcli \"your question\"\n", onboardingPath)
+				fmt.Fprintf(os.Stderr, "fi-cli onboarding required.\n1) Run: fi-cli init\n2) Add api_key in: %s\n3) Run: fi-cli \"your question\"\n", onboardingPath)
 				os.Exit(2)
 			}
 
@@ -192,7 +192,7 @@ func newInitCmd() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize V-CLI config file",
+		Short: "Initialize fi-cli config file",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := config.ExistingConfigPath()
@@ -200,7 +200,7 @@ func newInitCmd() *cobra.Command {
 				target = config.PreferredConfigPath()
 			} else if !force {
 				fmt.Fprintf(os.Stdout, "Config already exists: %s\n", target)
-				fmt.Fprintln(os.Stdout, "Use --force to overwrite. Next: set api_key and run `vcli \"your question\"`.")
+				fmt.Fprintln(os.Stdout, "Use --force to overwrite. Next: set api_key and run `fi-cli \"your question\"`.")
 				return nil
 			}
 
@@ -209,7 +209,7 @@ func newInitCmd() *cobra.Command {
 			}
 
 			content := strings.TrimSpace(`
-# V-CLI configuration
+# fi-cli configuration
 api_key: ""
 model: openrouter/pony-alpha
 openrouter_base_url: "https://openrouter.ai/api/v1"
@@ -229,8 +229,8 @@ no_plan: true
 			fmt.Fprintf(os.Stdout, "Initialized config: %s\n", target)
 			fmt.Fprintln(os.Stdout, "Next steps:")
 			fmt.Fprintln(os.Stdout, "1) Set `api_key` in the config file")
-			fmt.Fprintln(os.Stdout, "2) Optional shell alias: alias v='vcli'")
-			fmt.Fprintln(os.Stdout, "3) Run: vcli \"what's the tech stack here?\"")
+			fmt.Fprintln(os.Stdout, "2) Recommended shell alias: alias fi='command fi-cli'")
+			fmt.Fprintln(os.Stdout, "3) Run: fi-cli \"what's the tech stack here?\"")
 			return nil
 		},
 	}

@@ -15,7 +15,7 @@ func systemPrompt(responseMode string) string {
 	default:
 		modeGuidance = "Respond in quick mode: 1-3 short lines unless safety requires more detail."
 	}
-	return strings.TrimSpace(fmt.Sprintf(`You are vcli, a terminal-native agent for answering repository questions.
+	return strings.TrimSpace(fmt.Sprintf(`You are fi-cli, a terminal-native agent for answering repository questions.
 
 Requirements:
 - Use tools to find evidence rather than guessing.

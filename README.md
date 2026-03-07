@@ -1,35 +1,35 @@
-# V-CLI
+# fi-cli
 
-V-CLI is a terminal-native agent orchestrator for repository Q&A. It prioritizes local evidence (grep/context), can optionally use web search, and is read-only by default.
+fi-cli is a terminal-native agent orchestrator for repository Q&A. It prioritizes local evidence (grep/context), can optionally use web search, and is read-only by default.
 
 ## Install
 
 1. Build:
    ```bash
-   go build -o vcli ./cmd/fi-cli
+   go build -o fi-cli ./cmd/fi-cli
    ```
 2. Install into PATH:
    ```bash
-   install -m 0755 vcli ~/.local/bin/vcli
+   install -m 0755 fi-cli ~/.local/bin/fi-cli
    export PATH="$HOME/.local/bin:$PATH"
    ```
 3. Optional alias:
    ```bash
-   alias v='vcli'
+   alias fi='command fi-cli'
    ```
 4. Initialize config:
    ```bash
-   vcli init
+   fi-cli init
    ```
 5. Edit the generated config file and set `api_key`.
 6. Run:
    ```bash
-   vcli "what's the tech stack here?"
+   fi-cli "what's the tech stack here?"
    ```
 
 ## First-Run Onboarding
 
-If no API key is configured, V-CLI prints onboarding instructions and exits with code `2`.
+If no API key is configured, fi-cli prints onboarding instructions and exits with code `2`.
 
 ## Configuration
 
@@ -69,8 +69,8 @@ Default mode is `read-only` (shell disabled).
 
 Use:
 ```bash
-vcli policy check
-vcli policy test "git status -sb"
+fi-cli policy check
+fi-cli policy test "git status -sb"
 ```
 
 Modes:
@@ -81,17 +81,17 @@ Modes:
 ## Usage
 
 ```bash
-vcli "where is auth implemented?"
-vcli --mode operator "how do I run this project?"
-vcli --plan --show-header "summarize architecture"
-vcli --no-tools "quick summary"
-vcli --shell-allow "git status" "show git status"
+fi-cli "where is auth implemented?"
+fi-cli --mode operator "how do I run this project?"
+fi-cli --plan --show-header "summarize architecture"
+fi-cli --no-tools "quick summary"
+fi-cli --shell-allow "git status" "show git status"
 ```
 
 Default output is concise:
 ```text
 tool: grep ok (12ms, 8 lines, 644 bytes)
-v: <answer>
+fi: <answer>
 ```
 
 ## License
