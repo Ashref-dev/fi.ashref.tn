@@ -13,9 +13,9 @@ fi-cli is a terminal-native agent orchestrator for repository Q&A. It prioritize
    install -m 0755 fi-cli ~/.local/bin/fi-cli
    export PATH="$HOME/.local/bin:$PATH"
    ```
-3. Optional alias:
+3. Optional shorthand alias:
    ```bash
-   alias fi='command fi-cli'
+   alias fic='fi-cli'
    ```
 4. Initialize config:
    ```bash

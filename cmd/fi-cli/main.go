@@ -234,7 +234,7 @@ tool_limits:
 			fmt.Fprintf(os.Stdout, "Initialized config: %s\n", target)
 			fmt.Fprintln(os.Stdout, "Next steps:")
 			fmt.Fprintln(os.Stdout, "1) Set `api_key` in the config file")
-			fmt.Fprintln(os.Stdout, "2) Recommended shell alias: alias fi='command fi-cli'")
+			fmt.Fprintln(os.Stdout, "2) Optional shorthand alias: alias fic='fi-cli'")
 			fmt.Fprintln(os.Stdout, "3) Run: fi-cli \"what's the tech stack here?\"")
 			return nil
 		},
