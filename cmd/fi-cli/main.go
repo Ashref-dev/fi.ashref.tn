@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,10 +41,13 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return cmd.Help()
+			question, err := resolveQuestion(args, os.Stdin, os.Stdout)
+			if err != nil {
+				if errors.Is(err, errNoQuestionInput) {
+					return cmd.Help()
+				}
+				return err
 			}
-			question := strings.Join(args, " ")
 			cfg, err := config.Load(cmd)
 			if err != nil {
 				return err
@@ -341,4 +346,36 @@ func persistRun(logger *zap.Logger, result agent.RunResult) {
 	if err := os.WriteFile(file, payload, 0o600); err != nil {
 		logger.Warn("failed to write run log", zap.Error(err))
 	}
+}
+
+var errNoQuestionInput = errors.New("no question provided")
+
+func resolveQuestion(args []string, stdin *os.File, stdout io.Writer) (string, error) {
+	if len(args) > 0 {
+		return strings.Join(args, " "), nil
+	}
+	info, err := stdin.Stat()
+	if err == nil && (info.Mode()&os.ModeCharDevice) == 0 {
+		data, readErr := io.ReadAll(stdin)
+		if readErr != nil {
+			return "", readErr
+		}
+		question := strings.TrimSpace(string(data))
+		if question == "" {
+			return "", errNoQuestionInput
+		}
+		return question, nil
+	}
+
+	fmt.Fprint(stdout, "question> ")
+	reader := bufio.NewReader(stdin)
+	line, readErr := reader.ReadString('\n')
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return "", readErr
+	}
+	question := strings.TrimSpace(line)
+	if question == "" {
+		return "", errNoQuestionInput
+	}
+	return question, nil
 }

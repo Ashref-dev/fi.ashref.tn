@@ -136,7 +136,8 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 
 		if len(response.ToolCalls) == 0 {
 			finalAnswer := strings.TrimSpace(response.Content)
-			if !a.cfg.JSON {
+			// Avoid a second model round-trip when the model already returned final text.
+			if !a.cfg.JSON && finalAnswer == "" {
 				streamed, err := a.streamFinal(ctx, llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice}, emit)
 				if err != nil {
 					a.logger.Error("streaming failed", zap.Error(err))

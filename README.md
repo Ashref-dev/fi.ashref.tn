@@ -100,7 +100,13 @@ fi-cli --mode operator "how do I run this project?"
 fi-cli --plan --show-header "summarize architecture"
 fi-cli --no-tools "quick summary"
 fi-cli --shell-allow "git status" "show git status"
+fi-cli
 ```
+
+Input tips (zsh/macOS):
+- You can run `fi-cli` with no args and type at `question>`.
+- If your inline question contains apostrophes (`'`), prefer double quotes around the full question.
+- `quote>` in zsh means your shell is waiting for a closing quote before fi-cli starts.
 
 Default output is concise:
 ```text
