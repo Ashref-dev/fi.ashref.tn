@@ -170,6 +170,10 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 		}
 
 		if len(response.ToolCalls) == 0 {
+			if a.shouldRequireGrepEvidence(toolUsage) {
+				messages = append(messages, openai.DeveloperMessage("Before final answer, run at least one focused grep call using question terms, then answer with evidence references."))
+				continue
+			}
 			if !firstDeltaAt.IsZero() {
 				captureFirstAnswerToken(firstDeltaAt)
 			} else if strings.TrimSpace(response.Content) != "" {
@@ -230,6 +234,17 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	emit(events.Event{Type: events.FinalAnswerReady, Timestamp: time.Now(), Payload: events.FinalAnswerPayload{Answer: result.FinalAnswer}})
 	emit(events.Event{Type: events.RunFinished, Timestamp: time.Now(), Payload: events.RunFinishedPayload{Status: result.Status, FinishedAt: result.FinishedAt}})
 	return result, errors.New("max steps reached")
+}
+
+func (a *Agent) shouldRequireGrepEvidence(toolUsage map[string]int) bool {
+	if _, ok := a.tools.Get("grep"); !ok {
+		return false
+	}
+	if toolUsage["grep"] > 0 {
+		return false
+	}
+	// If grep cannot run (for example explicit zero call budget), do not deadlock.
+	return a.withinToolBudget("grep", toolUsage)
 }
 
 func (a *Agent) captureInitialStructureSnapshot(
