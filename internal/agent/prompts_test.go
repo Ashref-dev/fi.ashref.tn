@@ -11,6 +11,7 @@ func TestSystemPromptEnforcesStrictPlainTextPolicy(t *testing.T) {
 		"Respond in plain text only",
 		"No markdown",
 		"no emojis",
+		"Investigate before concluding",
 		"return the exact command(s) first",
 		"Do not use markdown links",
 	}
@@ -22,11 +23,14 @@ func TestSystemPromptEnforcesStrictPlainTextPolicy(t *testing.T) {
 }
 
 func TestDeveloperPromptCommandIntentIsCommandFirst(t *testing.T) {
-	prompt := developerPrompt([]string{"grep", "shell"}, true, []string{"git status"}, true)
+	prompt := developerPrompt([]string{"grep", "list_tree", "shell"}, true, []string{"git status"}, true)
 	checks := []string{
 		"Plain text only; no markdown and no emojis",
 		"first line is the exact runnable command(s)",
 		"not markdown links",
+		"Mandatory investigation order",
+		"path=\".\", max_depth=2",
+		"use list_tree first",
 		"run a quick ls or ls -la at repo root",
 	}
 	for _, check := range checks {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -136,6 +135,7 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 
 	steps := 0
 	toolUsage := map[string]int{}
+	a.captureInitialStructureSnapshot(ctx, repoRoot, toolUsage, &result, &messages, emit)
 	firstModelResponseCaptured := false
 	for steps < a.cfg.MaxSteps {
 		steps++
@@ -202,74 +202,8 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 		}
 		assistant := openai.ChatCompletionAssistantMessageParam{ToolCalls: toolCallParams}
 		messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
-
-		for _, call := range response.ToolCalls {
-			if !a.withinToolBudget(call.Name, toolUsage) {
-				err := fmt.Errorf("tool call limit reached for %s", call.Name)
-				payload := map[string]any{"error": err.Error(), "duration_ms": 0}
-				record := ToolCallRecord{ToolName: call.Name, Input: sanitizeInput(call.Arguments), Output: payload, Status: "error", StartedAt: time.Now(), DurationMs: 0}
-				result.ToolCalls = append(result.ToolCalls, record)
-				emit(events.Event{Type: events.ToolCallFailed, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{ToolName: call.Name, Status: "error", Preview: err.Error(), DurationMs: 0, LineCount: 1, ByteCount: len(err.Error()), Truncated: false}})
-				payloadBytes, _ := json.Marshal(payload)
-				messages = append(messages, openai.ToolMessage(string(payloadBytes), call.ID))
-				continue
-			}
-
-			tool, ok := a.tools.Get(call.Name)
-			if !ok {
-				err := fmt.Errorf("unknown tool: %s", call.Name)
-				emit(events.Event{Type: events.ToolCallFailed, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{ToolName: call.Name, Status: "error", Preview: err.Error(), DurationMs: 0, LineCount: 1, ByteCount: len(err.Error())}})
-				payloadBytes, _ := json.Marshal(map[string]string{"error": err.Error()})
-				messages = append(messages, openai.ToolMessage(string(payloadBytes), call.ID))
-				continue
-			}
-			inputSanitized := sanitizeInput(call.Arguments)
-			start := time.Now()
-			emit(events.Event{Type: events.ToolCallStarted, Timestamp: start, Payload: events.ToolCallStartedPayload{ToolName: call.Name, Input: inputSanitized, StartedAt: start}})
-
-			meta := tools.Meta{RepoRoot: repoRoot, UnsafeShell: a.cfg.UnsafeShell, ToolTimeoutSeconds: 10}
-			switch call.Name {
-			case "grep":
-				meta.MaxResults = a.cfg.ToolLimits.GrepMaxResults
-				meta.MaxBytes = a.cfg.ToolLimits.GrepMaxBytes
-			case "shell":
-				meta.MaxBytes = a.cfg.ToolLimits.ShellMaxBytes
-			case "exa_search":
-				meta.MaxBytes = a.cfg.ToolLimits.WebMaxBytes
-			}
-
-			res, err := tool.Execute(ctx, call.Arguments, meta)
-			toolUsage[call.Name]++
-			duration := time.Since(start).Milliseconds()
-			result.StageTimingsMs[StageToolExecutionTotal] += duration
-			result.StageTimingsMs[StageToolExecutionPrefix+call.Name] += duration
-			if err != nil {
-				payload := map[string]any{"error": err.Error(), "duration_ms": duration}
-				record := ToolCallRecord{ToolName: call.Name, Input: inputSanitized, Output: payload, Status: "error", StartedAt: start, DurationMs: duration}
-				result.ToolCalls = append(result.ToolCalls, record)
-				emit(events.Event{Type: events.ToolCallFailed, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{ToolName: call.Name, Status: "error", Preview: err.Error(), DurationMs: duration, LineCount: 1, ByteCount: len(err.Error()), Truncated: false}})
-				payloadBytes, _ := json.Marshal(payload)
-				messages = append(messages, openai.ToolMessage(string(payloadBytes), call.ID))
-				continue
-			}
-			res.DurationMs = duration
-			record := ToolCallRecord{ToolName: call.Name, Input: inputSanitized, Output: res.Payload, Status: "success", StartedAt: start, DurationMs: duration}
-			result.ToolCalls = append(result.ToolCalls, record)
-
-			emit(events.Event{Type: events.ToolCallFinished, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{
-				ToolName:   call.Name,
-				Status:     "success",
-				Output:     res.Payload,
-				Preview:    res.Preview,
-				LineCount:  res.LineCount,
-				ByteCount:  res.ByteCount,
-				Truncated:  res.Truncated,
-				DurationMs: duration,
-			}})
-
-			payloadBytes, _ := json.Marshal(res.Payload)
-			messages = append(messages, openai.ToolMessage(string(payloadBytes), call.ID))
-		}
+		toolMessages := a.executeToolBatch(ctx, response.ToolCalls, repoRoot, toolUsage, &result, emit)
+		messages = append(messages, toolMessages...)
 	}
 
 	// max steps reached
@@ -296,6 +230,94 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	emit(events.Event{Type: events.FinalAnswerReady, Timestamp: time.Now(), Payload: events.FinalAnswerPayload{Answer: result.FinalAnswer}})
 	emit(events.Event{Type: events.RunFinished, Timestamp: time.Now(), Payload: events.RunFinishedPayload{Status: result.Status, FinishedAt: result.FinishedAt}})
 	return result, errors.New("max steps reached")
+}
+
+func (a *Agent) captureInitialStructureSnapshot(
+	ctx context.Context,
+	repoRoot string,
+	toolUsage map[string]int,
+	result *RunResult,
+	messages *[]openai.ChatCompletionMessageParamUnion,
+	emit func(events.Event),
+) {
+	tool, ok := a.tools.Get("list_tree")
+	if !ok {
+		return
+	}
+
+	args, _ := json.Marshal(map[string]any{
+		"path":        ".",
+		"max_depth":   2,
+		"max_entries": 200,
+	})
+	inputSanitized := sanitizeInput(args)
+	start := time.Now()
+	emit(events.Event{Type: events.ToolCallStarted, Timestamp: start, Payload: events.ToolCallStartedPayload{
+		ToolName:  "list_tree",
+		Input:     inputSanitized,
+		StartedAt: start,
+	}})
+
+	meta := tools.Meta{
+		RepoRoot:           repoRoot,
+		UnsafeShell:        a.cfg.UnsafeShell,
+		ToolTimeoutSeconds: a.cfg.ToolTimeoutSeconds,
+		MaxBytes:           a.cfg.ToolLimits.ContextMaxBytes,
+	}
+
+	res, err := tool.Execute(ctx, args, meta)
+	toolUsage["list_tree"]++
+	duration := time.Since(start).Milliseconds()
+	result.StageTimingsMs[StageToolExecutionTotal] += duration
+	result.StageTimingsMs[StageToolExecutionPrefix+"list_tree"] += duration
+
+	if err != nil {
+		payload := map[string]any{"error": err.Error(), "duration_ms": duration}
+		result.ToolCalls = append(result.ToolCalls, ToolCallRecord{
+			ToolName:   "list_tree",
+			Input:      inputSanitized,
+			Output:     payload,
+			Status:     "error",
+			StartedAt:  start,
+			DurationMs: duration,
+		})
+		emit(events.Event{Type: events.ToolCallFailed, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{
+			ToolName:   "list_tree",
+			Status:     "error",
+			Preview:    err.Error(),
+			LineCount:  1,
+			ByteCount:  len(err.Error()),
+			Truncated:  false,
+			DurationMs: duration,
+		}})
+		return
+	}
+
+	res.DurationMs = duration
+	result.ToolCalls = append(result.ToolCalls, ToolCallRecord{
+		ToolName:   "list_tree",
+		Input:      inputSanitized,
+		Output:     res.Payload,
+		Status:     "success",
+		StartedAt:  start,
+		DurationMs: duration,
+	})
+	emit(events.Event{Type: events.ToolCallFinished, Timestamp: time.Now(), Payload: events.ToolCallFinishedPayload{
+		ToolName:   "list_tree",
+		Status:     "success",
+		Output:     res.Payload,
+		Preview:    res.Preview,
+		LineCount:  res.LineCount,
+		ByteCount:  res.ByteCount,
+		Truncated:  res.Truncated,
+		DurationMs: duration,
+	}})
+
+	snapshot := strings.TrimSpace(util.Preview(res.Preview, 80, 8000))
+	if snapshot == "" {
+		return
+	}
+	*messages = append(*messages, openai.DeveloperMessage("Repository structure snapshot (auto list_tree at run start):\n"+snapshot))
 }
 
 func (a *Agent) generatePlan(ctx context.Context, question string, repoCtx repo.RepoContext) []string {

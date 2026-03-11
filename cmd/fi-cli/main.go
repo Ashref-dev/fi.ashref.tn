@@ -43,7 +43,7 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stageTimings := agent.DefaultStageTimings()
+			stageTimings := map[string]int64{}
 
 			questionStart := time.Now()
 			question, err := resolveQuestion(args, os.Stdin, os.Stdout)
@@ -107,7 +107,8 @@ func newRootCmd() *cobra.Command {
 			}
 
 			grepTool := tools.NewGrepTool()
-			toolList := []tools.Tool{grepTool}
+			treeTool := tools.NewListTreeTool()
+			toolList := []tools.Tool{grepTool, treeTool}
 			if cfg.UnsafeShell || len(cfg.ShellAllowlist) > 0 {
 				toolList = append(toolList, tools.NewShellTool(cfg.ShellAllowlist))
 			}
@@ -127,6 +128,15 @@ func newRootCmd() *cobra.Command {
 			} else {
 				client = llm.NewOpenRouterClient(apiKey, cfg.OpenRouterBaseURL, cfg.HTTPReferer, cfg.Title)
 			}
+			client = llm.NewResilientClient(client, llm.ResilienceConfig{
+				FallbackModels:          cfg.FallbackModels,
+				RetryMaxAttempts:        cfg.LLMRetryMaxAttempts,
+				RetryInitialBackoff:     cfg.LLMRetryInitialBackoff,
+				RetryMaxBackoff:         cfg.LLMRetryMaxBackoff,
+				CircuitFailureThreshold: cfg.LLMCircuitFailureThreshold,
+				CircuitWindow:           cfg.LLMCircuitWindow,
+				CircuitOpenDuration:     cfg.LLMCircuitOpenDuration,
+			})
 
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
@@ -197,6 +207,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("model", config.DefaultModel, "Model name")
+	cmd.Flags().StringSlice("fallback-model", nil, "Fallback model (repeatable)")
 	cmd.Flags().String("mode", config.DefaultResponseMode, "Response mode: quick|operator|explain")
 	cmd.Flags().Int("max-steps", config.DefaultMaxSteps, "Maximum tool steps")
 	cmd.Flags().String("repo", ".", "Repository path")
@@ -249,11 +260,22 @@ func newInitCmd() *cobra.Command {
 # fi-cli configuration
 api_key: ""
 model: openrouter/pony-alpha
+# fallback_models:
+#   - openrouter/anthropic/claude-3.5-sonnet
+#   - openrouter/openai/gpt-4o-mini
 openrouter_base_url: "https://openrouter.ai/api/v1"
 response_mode: quick
 show_header: false
 show_tools: true
 no_plan: true
+llm_retry_max_attempts: 2
+llm_retry_initial_backoff: 300ms
+llm_retry_max_backoff: 2s
+llm_circuit_failure_threshold: 5
+llm_circuit_window: 30s
+llm_circuit_open_duration: 15s
+tool_parallelism: 4
+tool_timeout_seconds: 10
 tool_limits:
   grep_max_calls: 30
   shell_max_calls: 30
@@ -335,7 +357,7 @@ func newAboutCmd() *cobra.Command {
 			}
 			mode := policy.ResolveShellMode(cfg.UnsafeShell, cfg.ShellAllowlist)
 			fmt.Fprintln(os.Stdout, "fi-cli")
-			fmt.Fprintln(os.Stdout, "- Default behavior: read-only repository analysis (grep/context)")
+			fmt.Fprintln(os.Stdout, "- Default behavior: read-only repository analysis (grep/list_tree/context)")
 			fmt.Fprintf(os.Stdout, "- Active shell mode: %s\n", mode)
 			fmt.Fprintf(os.Stdout, "- Tool call caps: grep=%d shell=%d web=%d\n", cfg.ToolLimits.GrepMaxCalls, cfg.ToolLimits.ShellMaxCalls, cfg.ToolLimits.WebMaxCalls)
 			fmt.Fprintf(os.Stdout, "- Response mode: %s\n", cfg.ResponseMode)

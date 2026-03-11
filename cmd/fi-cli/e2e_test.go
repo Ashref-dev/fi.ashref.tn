@@ -64,6 +64,19 @@ func TestCLIJSONOutput(t *testing.T) {
 			t.Fatalf("expected non-negative timing for %q, got %f", key, value)
 		}
 	}
+	if grepRaw, exists := stageTimings["tool_execution.grep"]; exists {
+		grepTiming, ok := grepRaw.(float64)
+		if !ok {
+			t.Fatalf("expected numeric timing for tool_execution.grep, got %T", grepRaw)
+		}
+		totalTiming, ok := stageTimings["tool_execution_total"].(float64)
+		if !ok {
+			t.Fatalf("expected numeric timing for tool_execution_total, got %T", stageTimings["tool_execution_total"])
+		}
+		if grepTiming > 0 && totalTiming <= 0 {
+			t.Fatalf("expected tool_execution_total > 0 when tool_execution.grep is %f", grepTiming)
+		}
+	}
 }
 
 func TestCLIJSONOutputFromStdinQuestion(t *testing.T) {
@@ -163,10 +176,63 @@ func TestCLIDefaultNoPlanWithToolExecutionOutput(t *testing.T) {
 	if strings.Contains(text, "\nPlan:\n") {
 		t.Fatalf("expected default no-plan behavior, got output: %s", text)
 	}
+	if !strings.Contains(text, "tool: list_tree ok") {
+		t.Fatalf("expected preflight list_tree execution line, got output: %s", text)
+	}
 	if !strings.Contains(text, "tool: grep ok") {
 		t.Fatalf("expected tool execution line, got output: %s", text)
 	}
+	if strings.Index(text, "tool: list_tree ok") > strings.Index(text, "tool: grep ok") {
+		t.Fatalf("expected list_tree to run before grep, got output: %s", text)
+	}
 	if !strings.Contains(text, "fi: ") {
 		t.Fatalf("expected final answer prefix, got output: %s", text)
+	}
+}
+
+func TestCLIStructureQuestionUsesListTreeTool(t *testing.T) {
+	fixture := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fixture, "sample.txt"), []byte("FICLI test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+	wd, _ := os.Getwd()
+	root := filepath.Dir(filepath.Dir(wd))
+
+	cmd := exec.Command("go", "run", "./cmd/fi-cli", "--json", "--repo", fixture, "show me the folder structure")
+	cmd.Env = append(os.Environ(), "FICLI_MOCK_LLM=1")
+	cmd.Dir = root
+
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("command failed: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("invalid json output: %v", err)
+	}
+	toolCalls, ok := payload["tool_calls"].([]any)
+	if !ok || len(toolCalls) < 2 {
+		t.Fatalf("expected non-empty tool_calls, got %T", payload["tool_calls"])
+	}
+	firstCall, ok := toolCalls[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool call payload: %T", toolCalls[0])
+	}
+	if firstCall["tool_name"] != "list_tree" {
+		t.Fatalf("expected first tool to be list_tree, got %v", firstCall["tool_name"])
+	}
+	foundGrep := false
+	for _, entry := range toolCalls {
+		call, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if call["tool_name"] == "grep" {
+			foundGrep = true
+			break
+		}
+	}
+	if !foundGrep {
+		t.Fatalf("expected grep tool call after preflight list_tree, got %+v", toolCalls)
 	}
 }

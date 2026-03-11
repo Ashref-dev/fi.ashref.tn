@@ -24,6 +24,8 @@ const (
 	DefaultShellBytes   = 20 * 1024
 	DefaultWebBytes     = 30 * 1024
 	DefaultMaxFileSize  = 32 * 1024
+	DefaultToolTimeout  = 10
+	DefaultToolParallel = 4
 )
 
 // ToolLimits controls max output sizes for tools and context.
@@ -41,62 +43,80 @@ type ToolLimits struct {
 
 // Config holds runtime configuration values.
 type Config struct {
-	Model             string
-	MaxSteps          int
-	Repo              string
-	APIKey            string
-	Timeout           time.Duration
-	UnsafeShell       bool
-	ShellAllowlist    []string
-	NoWeb             bool
-	NoPlan            bool
-	ShowHeader        bool
-	ShowTools         bool
-	NoTools           bool
-	ResponseMode      string
-	Quiet             bool
-	JSON              bool
-	Timings           bool
-	Verbose           bool
-	LogFile           string
-	HistoryLines      int
-	NoHistory         bool
-	OutputFormat      string
-	PersistRuns       bool
-	OpenRouterBaseURL string
-	HTTPReferer       string
-	Title             string
-	ToolLimits        ToolLimits
+	Model                      string
+	FallbackModels             []string
+	MaxSteps                   int
+	Repo                       string
+	APIKey                     string
+	Timeout                    time.Duration
+	ToolTimeoutSeconds         int
+	ToolParallelism            int
+	LLMRetryMaxAttempts        int
+	LLMRetryInitialBackoff     time.Duration
+	LLMRetryMaxBackoff         time.Duration
+	LLMCircuitFailureThreshold int
+	LLMCircuitWindow           time.Duration
+	LLMCircuitOpenDuration     time.Duration
+	UnsafeShell                bool
+	ShellAllowlist             []string
+	NoWeb                      bool
+	NoPlan                     bool
+	ShowHeader                 bool
+	ShowTools                  bool
+	NoTools                    bool
+	ResponseMode               string
+	Quiet                      bool
+	JSON                       bool
+	Timings                    bool
+	Verbose                    bool
+	LogFile                    string
+	HistoryLines               int
+	NoHistory                  bool
+	OutputFormat               string
+	PersistRuns                bool
+	OpenRouterBaseURL          string
+	HTTPReferer                string
+	Title                      string
+	ToolLimits                 ToolLimits
 }
 
 type rawConfig struct {
-	Model              string     `mapstructure:"model"`
-	MaxSteps           int        `mapstructure:"max_steps"`
-	Repo               string     `mapstructure:"repo"`
-	APIKey             string     `mapstructure:"api_key"`
-	Timeout            string     `mapstructure:"timeout"`
-	UnsafeShell        bool       `mapstructure:"unsafe_shell"`
-	UnsafeShellDefault bool       `mapstructure:"unsafe_shell_default"`
-	ShellAllowlist     []string   `mapstructure:"shell_allowlist"`
-	NoWeb              bool       `mapstructure:"no_web"`
-	NoPlan             bool       `mapstructure:"no_plan"`
-	ShowHeader         bool       `mapstructure:"show_header"`
-	ShowTools          bool       `mapstructure:"show_tools"`
-	NoTools            bool       `mapstructure:"no_tools"`
-	ResponseMode       string     `mapstructure:"response_mode"`
-	Quiet              bool       `mapstructure:"quiet"`
-	JSON               bool       `mapstructure:"json"`
-	Timings            bool       `mapstructure:"timings"`
-	Verbose            bool       `mapstructure:"verbose"`
-	LogFile            string     `mapstructure:"log_file"`
-	HistoryLines       int        `mapstructure:"history_lines"`
-	NoHistory          bool       `mapstructure:"no_history"`
-	OutputFormat       string     `mapstructure:"output_format"`
-	PersistRuns        bool       `mapstructure:"persist_runs"`
-	OpenRouterBaseURL  string     `mapstructure:"openrouter_base_url"`
-	HTTPReferer        string     `mapstructure:"http_referer"`
-	Title              string     `mapstructure:"title"`
-	ToolLimits         ToolLimits `mapstructure:"tool_limits"`
+	Model                      string     `mapstructure:"model"`
+	FallbackModels             []string   `mapstructure:"fallback_models"`
+	MaxSteps                   int        `mapstructure:"max_steps"`
+	Repo                       string     `mapstructure:"repo"`
+	APIKey                     string     `mapstructure:"api_key"`
+	Timeout                    string     `mapstructure:"timeout"`
+	ToolTimeoutSeconds         int        `mapstructure:"tool_timeout_seconds"`
+	ToolParallelism            int        `mapstructure:"tool_parallelism"`
+	LLMRetryMaxAttempts        int        `mapstructure:"llm_retry_max_attempts"`
+	LLMRetryInitialBackoff     string     `mapstructure:"llm_retry_initial_backoff"`
+	LLMRetryMaxBackoff         string     `mapstructure:"llm_retry_max_backoff"`
+	LLMCircuitFailureThreshold int        `mapstructure:"llm_circuit_failure_threshold"`
+	LLMCircuitWindow           string     `mapstructure:"llm_circuit_window"`
+	LLMCircuitOpenDuration     string     `mapstructure:"llm_circuit_open_duration"`
+	UnsafeShell                bool       `mapstructure:"unsafe_shell"`
+	UnsafeShellDefault         bool       `mapstructure:"unsafe_shell_default"`
+	ShellAllowlist             []string   `mapstructure:"shell_allowlist"`
+	NoWeb                      bool       `mapstructure:"no_web"`
+	NoPlan                     bool       `mapstructure:"no_plan"`
+	ShowHeader                 bool       `mapstructure:"show_header"`
+	ShowTools                  bool       `mapstructure:"show_tools"`
+	NoTools                    bool       `mapstructure:"no_tools"`
+	ResponseMode               string     `mapstructure:"response_mode"`
+	Quiet                      bool       `mapstructure:"quiet"`
+	JSON                       bool       `mapstructure:"json"`
+	Timings                    bool       `mapstructure:"timings"`
+	Verbose                    bool       `mapstructure:"verbose"`
+	LogFile                    string     `mapstructure:"log_file"`
+	HistoryLines               int        `mapstructure:"history_lines"`
+	NoHistory                  bool       `mapstructure:"no_history"`
+	OutputFormat               string     `mapstructure:"output_format"`
+	PersistRuns                bool       `mapstructure:"persist_runs"`
+	OpenRouterBaseURL          string     `mapstructure:"openrouter_base_url"`
+	HTTPReferer                string     `mapstructure:"http_referer"`
+	Title                      string     `mapstructure:"title"`
+	ToolLimits                 ToolLimits `mapstructure:"tool_limits"`
 }
 
 // Load resolves configuration from defaults, config files, env, and flags.
@@ -107,8 +127,17 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.AutomaticEnv()
 
 	v.SetDefault("model", DefaultModel)
+	v.SetDefault("fallback_models", []string{})
 	v.SetDefault("max_steps", DefaultMaxSteps)
 	v.SetDefault("timeout", DefaultTimeout.String())
+	v.SetDefault("tool_timeout_seconds", DefaultToolTimeout)
+	v.SetDefault("tool_parallelism", DefaultToolParallel)
+	v.SetDefault("llm_retry_max_attempts", 2)
+	v.SetDefault("llm_retry_initial_backoff", "300ms")
+	v.SetDefault("llm_retry_max_backoff", "2s")
+	v.SetDefault("llm_circuit_failure_threshold", 5)
+	v.SetDefault("llm_circuit_window", "30s")
+	v.SetDefault("llm_circuit_open_duration", "15s")
 	v.SetDefault("repo", ".")
 	v.SetDefault("api_key", "")
 	v.SetDefault("unsafe_shell", false)
@@ -142,6 +171,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 
 	if cmd != nil {
 		_ = v.BindPFlag("model", cmd.Flags().Lookup("model"))
+		_ = v.BindPFlag("fallback_models", cmd.Flags().Lookup("fallback-model"))
 		_ = v.BindPFlag("max_steps", cmd.Flags().Lookup("max-steps"))
 		_ = v.BindPFlag("repo", cmd.Flags().Lookup("repo"))
 		_ = v.BindPFlag("timeout", cmd.Flags().Lookup("timeout"))
@@ -167,6 +197,9 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 	if model := os.Getenv("FICLI_MODEL"); model != "" {
 		v.Set("model", model)
+	}
+	if fallbackModels := os.Getenv("FICLI_FALLBACK_MODELS"); fallbackModels != "" {
+		v.Set("fallback_models", splitCSV(fallbackModels))
 	}
 	if baseURL := os.Getenv("FICLI_OPENROUTER_BASE_URL"); baseURL != "" {
 		v.Set("openrouter_base_url", baseURL)
@@ -199,6 +232,22 @@ func Load(cmd *cobra.Command) (Config, error) {
 		}
 		timeout = parsed
 	}
+	retryInitialBackoff, err := parseDurationOrDefault(raw.LLMRetryInitialBackoff, 300*time.Millisecond)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid llm_retry_initial_backoff: %w", err)
+	}
+	retryMaxBackoff, err := parseDurationOrDefault(raw.LLMRetryMaxBackoff, 2*time.Second)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid llm_retry_max_backoff: %w", err)
+	}
+	circuitWindow, err := parseDurationOrDefault(raw.LLMCircuitWindow, 30*time.Second)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid llm_circuit_window: %w", err)
+	}
+	circuitOpenDuration, err := parseDurationOrDefault(raw.LLMCircuitOpenDuration, 15*time.Second)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid llm_circuit_open_duration: %w", err)
+	}
 
 	unsafeShell := raw.UnsafeShell
 	if cmd != nil && cmd.Flags().Changed("unsafe-shell") {
@@ -230,32 +279,41 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 
 	cfg := Config{
-		Model:             raw.Model,
-		MaxSteps:          raw.MaxSteps,
-		Repo:              raw.Repo,
-		APIKey:            strings.TrimSpace(raw.APIKey),
-		Timeout:           timeout,
-		UnsafeShell:       unsafeShell,
-		ShellAllowlist:    normalizeAllowlist(raw.ShellAllowlist),
-		NoWeb:             raw.NoWeb,
-		NoPlan:            noPlan,
-		ShowHeader:        raw.ShowHeader,
-		ShowTools:         showTools,
-		NoTools:           raw.NoTools,
-		ResponseMode:      normalizeResponseMode(raw.ResponseMode),
-		Quiet:             raw.Quiet,
-		JSON:              jsonOutput,
-		Timings:           raw.Timings,
-		Verbose:           raw.Verbose,
-		LogFile:           raw.LogFile,
-		HistoryLines:      raw.HistoryLines,
-		NoHistory:         raw.NoHistory,
-		OutputFormat:      raw.OutputFormat,
-		PersistRuns:       raw.PersistRuns,
-		OpenRouterBaseURL: raw.OpenRouterBaseURL,
-		HTTPReferer:       raw.HTTPReferer,
-		Title:             raw.Title,
-		ToolLimits:        raw.ToolLimits,
+		Model:                      raw.Model,
+		FallbackModels:             normalizeAllowlist(raw.FallbackModels),
+		MaxSteps:                   raw.MaxSteps,
+		Repo:                       raw.Repo,
+		APIKey:                     strings.TrimSpace(raw.APIKey),
+		Timeout:                    timeout,
+		ToolTimeoutSeconds:         raw.ToolTimeoutSeconds,
+		ToolParallelism:            raw.ToolParallelism,
+		LLMRetryMaxAttempts:        raw.LLMRetryMaxAttempts,
+		LLMRetryInitialBackoff:     retryInitialBackoff,
+		LLMRetryMaxBackoff:         retryMaxBackoff,
+		LLMCircuitFailureThreshold: raw.LLMCircuitFailureThreshold,
+		LLMCircuitWindow:           circuitWindow,
+		LLMCircuitOpenDuration:     circuitOpenDuration,
+		UnsafeShell:                unsafeShell,
+		ShellAllowlist:             normalizeAllowlist(raw.ShellAllowlist),
+		NoWeb:                      raw.NoWeb,
+		NoPlan:                     noPlan,
+		ShowHeader:                 raw.ShowHeader,
+		ShowTools:                  showTools,
+		NoTools:                    raw.NoTools,
+		ResponseMode:               normalizeResponseMode(raw.ResponseMode),
+		Quiet:                      raw.Quiet,
+		JSON:                       jsonOutput,
+		Timings:                    raw.Timings,
+		Verbose:                    raw.Verbose,
+		LogFile:                    raw.LogFile,
+		HistoryLines:               raw.HistoryLines,
+		NoHistory:                  raw.NoHistory,
+		OutputFormat:               raw.OutputFormat,
+		PersistRuns:                raw.PersistRuns,
+		OpenRouterBaseURL:          raw.OpenRouterBaseURL,
+		HTTPReferer:                raw.HTTPReferer,
+		Title:                      raw.Title,
+		ToolLimits:                 raw.ToolLimits,
 	}
 
 	if cfg.Model == "" {
@@ -266,6 +324,33 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultTimeout
+	}
+	if cfg.ToolTimeoutSeconds <= 0 {
+		cfg.ToolTimeoutSeconds = DefaultToolTimeout
+	}
+	if cfg.ToolParallelism <= 0 {
+		cfg.ToolParallelism = DefaultToolParallel
+	}
+	if cfg.LLMRetryMaxAttempts < 0 {
+		cfg.LLMRetryMaxAttempts = 0
+	}
+	if cfg.LLMRetryInitialBackoff <= 0 {
+		cfg.LLMRetryInitialBackoff = 300 * time.Millisecond
+	}
+	if cfg.LLMRetryMaxBackoff <= 0 {
+		cfg.LLMRetryMaxBackoff = 2 * time.Second
+	}
+	if cfg.LLMCircuitFailureThreshold <= 0 {
+		cfg.LLMCircuitFailureThreshold = 5
+	}
+	if cfg.LLMCircuitWindow <= 0 {
+		cfg.LLMCircuitWindow = 30 * time.Second
+	}
+	if cfg.LLMCircuitOpenDuration <= 0 {
+		cfg.LLMCircuitOpenDuration = 15 * time.Second
+	}
+	if cfg.LLMRetryInitialBackoff > cfg.LLMRetryMaxBackoff {
+		cfg.LLMRetryInitialBackoff = cfg.LLMRetryMaxBackoff
 	}
 	if cfg.OpenRouterBaseURL == "" {
 		cfg.OpenRouterBaseURL = DefaultBaseURL
@@ -436,4 +521,15 @@ func uniqStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func parseDurationOrDefault(raw string, fallback time.Duration) (time.Duration, error) {
+	if strings.TrimSpace(raw) == "" {
+		return fallback, nil
+	}
+	parsed, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, err
+	}
+	return parsed, nil
 }

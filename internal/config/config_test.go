@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -36,6 +37,7 @@ func TestLoadPlanAndTimingsFlags(t *testing.T) {
 	cmd.Flags().Bool("no-plan", true, "")
 	cmd.Flags().Bool("timings", false, "")
 	cmd.Flags().String("model", DefaultModel, "")
+	cmd.Flags().StringSlice("fallback-model", nil, "")
 	cmd.Flags().Int("max-steps", DefaultMaxSteps, "")
 	cmd.Flags().String("repo", ".", "")
 	cmd.Flags().String("timeout", DefaultTimeout.String(), "")
@@ -59,6 +61,12 @@ func TestLoadPlanAndTimingsFlags(t *testing.T) {
 	if err := cmd.Flags().Set("timings", "true"); err != nil {
 		t.Fatalf("failed to set --timings: %v", err)
 	}
+	if err := cmd.Flags().Set("fallback-model", "fallback-a"); err != nil {
+		t.Fatalf("failed to set --fallback-model: %v", err)
+	}
+	if err := cmd.Flags().Set("fallback-model", "fallback-b"); err != nil {
+		t.Fatalf("failed to set --fallback-model: %v", err)
+	}
 
 	cfg, err := Load(cmd)
 	if err != nil {
@@ -69,5 +77,46 @@ func TestLoadPlanAndTimingsFlags(t *testing.T) {
 	}
 	if !cfg.Timings {
 		t.Fatalf("expected --timings to be enabled")
+	}
+	if len(cfg.FallbackModels) != 2 || cfg.FallbackModels[0] != "fallback-a" || cfg.FallbackModels[1] != "fallback-b" {
+		t.Fatalf("expected fallback models from flags, got %+v", cfg.FallbackModels)
+	}
+}
+
+func TestLoadResilienceAndFallbackDefaults(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("FICLI_FALLBACK_MODELS", "model-a,model-b")
+
+	cfg, err := Load(nil)
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if len(cfg.FallbackModels) != 2 || cfg.FallbackModels[0] != "model-a" || cfg.FallbackModels[1] != "model-b" {
+		t.Fatalf("unexpected fallback models: %+v", cfg.FallbackModels)
+	}
+	if cfg.ToolParallelism != DefaultToolParallel {
+		t.Fatalf("expected tool parallelism %d, got %d", DefaultToolParallel, cfg.ToolParallelism)
+	}
+	if cfg.ToolTimeoutSeconds != DefaultToolTimeout {
+		t.Fatalf("expected tool timeout %d, got %d", DefaultToolTimeout, cfg.ToolTimeoutSeconds)
+	}
+	if cfg.LLMRetryMaxAttempts != 2 {
+		t.Fatalf("expected retry max attempts 2, got %d", cfg.LLMRetryMaxAttempts)
+	}
+	if cfg.LLMRetryInitialBackoff != 300*time.Millisecond {
+		t.Fatalf("expected retry initial backoff 300ms, got %s", cfg.LLMRetryInitialBackoff)
+	}
+	if cfg.LLMRetryMaxBackoff != 2*time.Second {
+		t.Fatalf("expected retry max backoff 2s, got %s", cfg.LLMRetryMaxBackoff)
+	}
+	if cfg.LLMCircuitFailureThreshold != 5 {
+		t.Fatalf("expected circuit failure threshold 5, got %d", cfg.LLMCircuitFailureThreshold)
+	}
+	if cfg.LLMCircuitWindow != 30*time.Second {
+		t.Fatalf("expected circuit window 30s, got %s", cfg.LLMCircuitWindow)
+	}
+	if cfg.LLMCircuitOpenDuration != 15*time.Second {
+		t.Fatalf("expected circuit open duration 15s, got %s", cfg.LLMCircuitOpenDuration)
 	}
 }

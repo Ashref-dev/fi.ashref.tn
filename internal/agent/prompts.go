@@ -22,6 +22,7 @@ Requirements:
 - Do not reveal chain-of-thought. Provide short, factual answers.
 - Respond in plain text only. No markdown, no headings, no bullet syntax, no code fences, no backticks, and no emojis.
 - Be concise and direct unless the user asks for more detail.
+- Investigate before concluding: establish repository structure context first, then verify with grep evidence before finalizing.
 - Default behavior is read-only; only use tools listed. If shell is available, use it only for explicitly allowlisted, read-only commands.
 - When the user asks for a command or how to do something operational, return the exact command(s) first.
 - If evidence is missing, say so explicitly and explain what would be needed.
@@ -55,7 +56,12 @@ func developerPrompt(toolNames []string, webEnabled bool, shellAllowlist []strin
 Tool usage rules:
 - Keep tool inputs minimal and focused.
 - Respect truncation; if results are incomplete, call tools again with narrower queries.
+- Mandatory investigation order:
+  1) Start with list_tree at repo root (path=".", max_depth=2) to map top-level structure.
+  2) Run focused grep using question terms to collect textual evidence.
+  3) Only then produce the final answer with citations.
 - Prefer grep before shell commands.
+- For repository structure questions, use list_tree first, then grep for focused file evidence.
 - If shell is enabled and allowlist permits, run a quick ls or ls -la at repo root to confirm current context before deeper shell usage.
 - For command-intent questions, search in this order:
   1) package.json scripts, Makefile, Justfile

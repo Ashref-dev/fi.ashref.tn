@@ -3,6 +3,8 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -10,6 +12,7 @@ import (
 type MockClient struct {
 	mu        sync.Mutex
 	toolCalls int
+	lastTool  string
 }
 
 // NewMockClient returns a simple mock.
@@ -28,10 +31,12 @@ func (m *MockClient) Create(ctx context.Context, req Request) (Response, error) 
 
 	m.toolCalls++
 	if m.toolCalls == 1 {
-		args, _ := json.Marshal(map[string]any{"pattern": "FICLI", "case_sensitive": false, "max_results": 20})
-		return Response{ToolCalls: []ToolCall{{ID: "call_1", Name: "grep", Arguments: args}}}, nil
+		toolName := chooseMockToolName(req)
+		m.lastTool = toolName
+		args := mockToolArgs(toolName)
+		return Response{ToolCalls: []ToolCall{{ID: "call_1", Name: toolName, Arguments: args}}}, nil
 	}
-	return Response{Content: "Summary: Mock response based on tool results. [tool:grep]\nNext steps: Review the referenced files for details."}, nil
+	return Response{Content: mockFinalContent(m.lastTool)}, nil
 }
 
 func (m *MockClient) Stream(ctx context.Context, req Request, onDelta func(string)) (Response, error) {
@@ -50,14 +55,47 @@ func (m *MockClient) Stream(ctx context.Context, req Request, onDelta func(strin
 
 	m.toolCalls++
 	if m.toolCalls == 1 {
-		args, _ := json.Marshal(map[string]any{"pattern": "FICLI", "case_sensitive": false, "max_results": 20})
-		return Response{ToolCalls: []ToolCall{{ID: "call_1", Name: "grep", Arguments: args}}}, nil
+		toolName := chooseMockToolName(req)
+		m.lastTool = toolName
+		args := mockToolArgs(toolName)
+		return Response{ToolCalls: []ToolCall{{ID: "call_1", Name: toolName, Arguments: args}}}, nil
 	}
 
-	content := "Summary: Mock response based on tool results. [tool:grep]\nNext steps: Review the referenced files for details."
+	content := mockFinalContent(m.lastTool)
 	resp := Response{Content: content}
 	if onDelta != nil {
 		onDelta(content)
 	}
 	return resp, nil
+}
+
+func chooseMockToolName(req Request) string {
+	toolBytes, _ := json.Marshal(req.Tools)
+	toolText := strings.ToLower(string(toolBytes))
+	if strings.Contains(toolText, "\"name\":\"grep\"") {
+		return "grep"
+	}
+	if strings.Contains(toolText, "\"name\":\"list_tree\"") {
+		return "list_tree"
+	}
+	return "grep"
+}
+
+func mockFinalContent(toolName string) string {
+	toolName = strings.TrimSpace(toolName)
+	if toolName == "" {
+		toolName = "grep"
+	}
+	return fmt.Sprintf("Summary: Mock response based on tool results. [tool:%s]\nNext steps: Review the referenced files for details.", toolName)
+}
+
+func mockToolArgs(toolName string) json.RawMessage {
+	switch toolName {
+	case "list_tree":
+		args, _ := json.Marshal(map[string]any{"path": ".", "max_depth": 3, "max_entries": 120})
+		return args
+	default:
+		args, _ := json.Marshal(map[string]any{"pattern": "FICLI", "case_sensitive": false, "max_results": 20})
+		return args
+	}
 }
