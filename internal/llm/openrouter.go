@@ -58,11 +58,19 @@ func (c *OpenRouterClient) Stream(ctx context.Context, req Request, onDelta func
 	}
 	stream := c.client.Chat.Completions.NewStreaming(ctx, params)
 	var builder strings.Builder
+	var accumulator openai.ChatCompletionAccumulator
+	sawToolCallDelta := false
 	for stream.Next() {
 		chunk := stream.Current()
+		if !accumulator.AddChunk(chunk) {
+			return Response{}, fmt.Errorf("failed to accumulate streaming response")
+		}
 		for _, choice := range chunk.Choices {
+			if len(choice.Delta.ToolCalls) > 0 {
+				sawToolCallDelta = true
+			}
 			delta := choice.Delta.Content
-			if delta != "" {
+			if delta != "" && !sawToolCallDelta {
 				builder.WriteString(delta)
 				if onDelta != nil {
 					onDelta(delta)
@@ -73,7 +81,21 @@ func (c *OpenRouterClient) Stream(ctx context.Context, req Request, onDelta func
 	if err := stream.Err(); err != nil {
 		return Response{}, err
 	}
-	return Response{Content: builder.String()}, nil
+	response := Response{Content: builder.String()}
+	if len(accumulator.Choices) > 0 {
+		response.Content = accumulator.Choices[0].Message.Content
+		for _, toolCall := range accumulator.Choices[0].Message.ToolCalls {
+			if toolCall.Type != "function" {
+				continue
+			}
+			response.ToolCalls = append(response.ToolCalls, ToolCall{
+				ID:        toolCall.ID,
+				Name:      toolCall.Function.Name,
+				Arguments: json.RawMessage(toolCall.Function.Arguments),
+			})
+		}
+	}
+	return response, nil
 }
 
 func parseChatCompletion(resp *openai.ChatCompletion) (Response, error) {

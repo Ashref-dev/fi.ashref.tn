@@ -19,6 +19,10 @@ func TestEvaluateShellCommandAllowlist(t *testing.T) {
 	if !decision.Allowed {
 		t.Fatalf("expected command allowed, reason: %s", decision.Reason)
 	}
+	lsDecision := EvaluateShellCommand("ls -la", false, []string{"ls"})
+	if !lsDecision.Allowed {
+		t.Fatalf("expected ls command allowed in allowlist mode, reason: %s", lsDecision.Reason)
+	}
 	blocked := EvaluateShellCommand("git commit -m x", false, []string{"git status"})
 	if blocked.Allowed {
 		t.Fatalf("expected command blocked")

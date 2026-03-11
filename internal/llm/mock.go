@@ -37,10 +37,27 @@ func (m *MockClient) Create(ctx context.Context, req Request) (Response, error) 
 func (m *MockClient) Stream(ctx context.Context, req Request, onDelta func(string)) (Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Keep stream behavior aligned with Create:
+	// first model turn requests grep, second turn returns final text.
+	if len(req.Tools) == 0 {
+		resp := Response{Content: "- Review repository context\n- Use grep to find signals\n- Summarize findings with citations"}
+		if onDelta != nil {
+			onDelta(resp.Content)
+		}
+		return resp, nil
+	}
+
+	m.toolCalls++
+	if m.toolCalls == 1 {
+		args, _ := json.Marshal(map[string]any{"pattern": "FICLI", "case_sensitive": false, "max_results": 20})
+		return Response{ToolCalls: []ToolCall{{ID: "call_1", Name: "grep", Arguments: args}}}, nil
+	}
+
 	content := "Summary: Mock response based on tool results. [tool:grep]\nNext steps: Review the referenced files for details."
 	resp := Response{Content: content}
 	if onDelta != nil {
-		onDelta(resp.Content)
+		onDelta(content)
 	}
 	return resp, nil
 }

@@ -56,6 +56,7 @@ type Config struct {
 	ResponseMode      string
 	Quiet             bool
 	JSON              bool
+	Timings           bool
 	Verbose           bool
 	LogFile           string
 	HistoryLines      int
@@ -85,6 +86,7 @@ type rawConfig struct {
 	ResponseMode       string     `mapstructure:"response_mode"`
 	Quiet              bool       `mapstructure:"quiet"`
 	JSON               bool       `mapstructure:"json"`
+	Timings            bool       `mapstructure:"timings"`
 	Verbose            bool       `mapstructure:"verbose"`
 	LogFile            string     `mapstructure:"log_file"`
 	HistoryLines       int        `mapstructure:"history_lines"`
@@ -120,6 +122,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("response_mode", DefaultResponseMode)
 	v.SetDefault("quiet", false)
 	v.SetDefault("json", false)
+	v.SetDefault("timings", false)
 	v.SetDefault("verbose", false)
 	v.SetDefault("log_file", "")
 	v.SetDefault("history_lines", 50)
@@ -151,6 +154,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 		_ = v.BindPFlag("response_mode", cmd.Flags().Lookup("mode"))
 		_ = v.BindPFlag("quiet", cmd.Flags().Lookup("quiet"))
 		_ = v.BindPFlag("json", cmd.Flags().Lookup("json"))
+		_ = v.BindPFlag("timings", cmd.Flags().Lookup("timings"))
 		_ = v.BindPFlag("verbose", cmd.Flags().Lookup("verbose"))
 		_ = v.BindPFlag("log_file", cmd.Flags().Lookup("log-file"))
 		_ = v.BindPFlag("history_lines", cmd.Flags().Lookup("history-lines"))
@@ -241,6 +245,7 @@ func Load(cmd *cobra.Command) (Config, error) {
 		ResponseMode:      normalizeResponseMode(raw.ResponseMode),
 		Quiet:             raw.Quiet,
 		JSON:              jsonOutput,
+		Timings:           raw.Timings,
 		Verbose:           raw.Verbose,
 		LogFile:           raw.LogFile,
 		HistoryLines:      raw.HistoryLines,

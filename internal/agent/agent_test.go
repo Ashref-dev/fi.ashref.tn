@@ -43,4 +43,16 @@ func TestAgentRunWithMock(t *testing.T) {
 	if len(result.ToolCalls) == 0 {
 		t.Fatalf("expected tool calls")
 	}
+	if result.StageTimingsMs == nil {
+		t.Fatalf("expected stage timings map")
+	}
+	for key := range DefaultStageTimings() {
+		value, ok := result.StageTimingsMs[key]
+		if !ok {
+			t.Fatalf("expected stage timing key %q", key)
+		}
+		if value < 0 {
+			t.Fatalf("expected non-negative timing for %q, got %d", key, value)
+		}
+	}
 }

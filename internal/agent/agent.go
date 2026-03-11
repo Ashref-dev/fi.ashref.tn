@@ -26,17 +26,18 @@ import (
 
 // RunResult captures run output for JSON mode.
 type RunResult struct {
-	RunID       string           `json:"run_id"`
-	StartedAt   time.Time        `json:"timestamp_start"`
-	FinishedAt  time.Time        `json:"timestamp_end"`
-	RepoRoot    string           `json:"repo_root"`
-	Question    string           `json:"question"`
-	Model       string           `json:"model"`
-	StepsUsed   int              `json:"steps_used"`
-	Status      string           `json:"status"`
-	FinalAnswer string           `json:"final_answer"`
-	ToolCalls   []ToolCallRecord `json:"tool_calls"`
-	Events      []events.Event   `json:"events"`
+	RunID          string           `json:"run_id"`
+	StartedAt      time.Time        `json:"timestamp_start"`
+	FinishedAt     time.Time        `json:"timestamp_end"`
+	RepoRoot       string           `json:"repo_root"`
+	Question       string           `json:"question"`
+	Model          string           `json:"model"`
+	StepsUsed      int              `json:"steps_used"`
+	Status         string           `json:"status"`
+	FinalAnswer    string           `json:"final_answer"`
+	StageTimingsMs map[string]int64 `json:"stage_timings_ms"`
+	ToolCalls      []ToolCallRecord `json:"tool_calls"`
+	Events         []events.Event   `json:"events"`
 }
 
 // ToolCallRecord records tool call history.
@@ -68,12 +69,13 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	started := time.Now()
 	runID := uuid.NewString()
 	result := RunResult{
-		RunID:     runID,
-		StartedAt: started,
-		RepoRoot:  repoRoot,
-		Question:  question,
-		Model:     a.cfg.Model,
-		Status:    "failure",
+		RunID:          runID,
+		StartedAt:      started,
+		RepoRoot:       repoRoot,
+		Question:       question,
+		Model:          a.cfg.Model,
+		Status:         "failure",
+		StageTimingsMs: DefaultStageTimings(),
 	}
 
 	emit := func(event events.Event) {
@@ -92,9 +94,19 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	}})
 
 	var plan []string
+	firstAnswerTokenCaptured := false
+	captureFirstAnswerToken := func(mark time.Time) {
+		if firstAnswerTokenCaptured {
+			return
+		}
+		result.StageTimingsMs[StageFirstAnswerTokenLatency] = durationMs(mark.Sub(started))
+		firstAnswerTokenCaptured = true
+	}
 	commandIntent := isCommandIntent(question)
 	if !a.cfg.NoPlan {
+		planningStart := time.Now()
 		plan = a.generatePlan(ctx, question, repoCtx)
+		result.StageTimingsMs[StagePlanning] = durationMs(time.Since(planningStart))
 		emit(events.Event{Type: events.PlanGenerated, Timestamp: time.Now(), Payload: events.PlanGeneratedPayload{Plan: plan}})
 	}
 
@@ -107,7 +119,9 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 		messages = append(messages, openai.DeveloperMessage("Plan:\n"+formatPlan(plan)))
 	}
 	if !a.cfg.NoHistory && a.cfg.HistoryLines > 0 {
+		historyStart := time.Now()
 		history := util.LoadShellHistory(a.cfg.HistoryLines)
+		result.StageTimingsMs[StageHistoryLoad] = durationMs(time.Since(historyStart))
 		if len(history) > 0 {
 			messages = append(messages, openai.DeveloperMessage("Recent shell history (most recent last):\n- "+strings.Join(history, "\n- ")))
 		}
@@ -122,33 +136,51 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 
 	steps := 0
 	toolUsage := map[string]int{}
+	firstModelResponseCaptured := false
 	for steps < a.cfg.MaxSteps {
 		steps++
-		response, err := a.client.Create(ctx, llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice})
+		modelWaitStart := time.Now()
+		modelRequest := llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice}
+		var (
+			response     llm.Response
+			err          error
+			firstDeltaAt time.Time
+		)
+		if a.cfg.JSON {
+			response, err = a.client.Create(ctx, modelRequest)
+		} else {
+			response, firstDeltaAt, err = a.streamModelStep(ctx, modelRequest, emit)
+		}
+		if !firstModelResponseCaptured {
+			if !firstDeltaAt.IsZero() {
+				result.StageTimingsMs[StageFirstModelResponseWait] = durationMs(firstDeltaAt.Sub(modelWaitStart))
+			} else {
+				result.StageTimingsMs[StageFirstModelResponseWait] = durationMs(time.Since(modelWaitStart))
+			}
+			firstModelResponseCaptured = true
+		}
 		if err != nil {
 			a.logger.Error("model request failed", zap.Error(err))
 			emit(events.Event{Type: events.RunError, Timestamp: time.Now(), Payload: events.RunErrorPayload{Message: err.Error()}})
 			result.Status = "failure"
 			result.StepsUsed = steps
 			result.FinishedAt = time.Now()
+			result.StageTimingsMs[StageTotalRunDuration] = durationMs(result.FinishedAt.Sub(started))
 			return result, err
 		}
 
 		if len(response.ToolCalls) == 0 {
-			finalAnswer := strings.TrimSpace(response.Content)
-			// Avoid a second model round-trip when the model already returned final text.
-			if !a.cfg.JSON && finalAnswer == "" {
-				streamed, err := a.streamFinal(ctx, llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice}, emit)
-				if err != nil {
-					a.logger.Error("streaming failed", zap.Error(err))
-				} else if strings.TrimSpace(streamed) != "" {
-					finalAnswer = streamed
-				}
+			if !firstDeltaAt.IsZero() {
+				captureFirstAnswerToken(firstDeltaAt)
+			} else if strings.TrimSpace(response.Content) != "" {
+				captureFirstAnswerToken(time.Now())
 			}
+			finalAnswer := strings.TrimSpace(response.Content)
 			result.FinalAnswer = strings.TrimSpace(finalAnswer)
 			result.Status = "success"
 			result.StepsUsed = steps
 			result.FinishedAt = time.Now()
+			result.StageTimingsMs[StageTotalRunDuration] = durationMs(result.FinishedAt.Sub(started))
 			emit(events.Event{Type: events.FinalAnswerReady, Timestamp: time.Now(), Payload: events.FinalAnswerPayload{Answer: result.FinalAnswer}})
 			emit(events.Event{Type: events.RunFinished, Timestamp: time.Now(), Payload: events.RunFinishedPayload{Status: result.Status, FinishedAt: result.FinishedAt}})
 			return result, nil
@@ -209,6 +241,8 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 			res, err := tool.Execute(ctx, call.Arguments, meta)
 			toolUsage[call.Name]++
 			duration := time.Since(start).Milliseconds()
+			result.StageTimingsMs[StageToolExecutionTotal] += duration
+			result.StageTimingsMs[StageToolExecutionPrefix+call.Name] += duration
 			if err != nil {
 				payload := map[string]any{"error": err.Error(), "duration_ms": duration}
 				record := ToolCallRecord{ToolName: call.Name, Input: inputSanitized, Output: payload, Status: "error", StartedAt: start, DurationMs: duration}
@@ -243,9 +277,12 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	messages = append(messages, openai.DeveloperMessage(warning))
 	finalAnswer := "Max steps reached; unable to complete."
 	if !a.cfg.JSON {
-		streamed, err := a.streamFinal(ctx, llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice}, emit)
-		if err == nil && strings.TrimSpace(streamed) != "" {
-			finalAnswer = streamed
+		response, firstDeltaAt, err := a.streamModelStep(ctx, llm.Request{Model: a.cfg.Model, Messages: messages, Tools: toolsDefs, ToolChoice: toolChoice}, emit)
+		if err == nil && strings.TrimSpace(response.Content) != "" {
+			if !firstDeltaAt.IsZero() {
+				captureFirstAnswerToken(firstDeltaAt)
+			}
+			finalAnswer = response.Content
 		}
 	}
 	if !strings.Contains(strings.ToLower(finalAnswer), "max steps") {
@@ -255,6 +292,7 @@ func (a *Agent) Run(ctx context.Context, question string, repoRoot string, repoC
 	result.Status = "partial"
 	result.StepsUsed = steps
 	result.FinishedAt = time.Now()
+	result.StageTimingsMs[StageTotalRunDuration] = durationMs(result.FinishedAt.Sub(started))
 	emit(events.Event{Type: events.FinalAnswerReady, Timestamp: time.Now(), Payload: events.FinalAnswerPayload{Answer: result.FinalAnswer}})
 	emit(events.Event{Type: events.RunFinished, Timestamp: time.Now(), Payload: events.RunFinishedPayload{Status: result.Status, FinishedAt: result.FinishedAt}})
 	return result, errors.New("max steps reached")
@@ -303,16 +341,18 @@ func formatPlan(plan []string) string {
 	return strings.TrimSpace(b.String())
 }
 
-func (a *Agent) streamFinal(ctx context.Context, req llm.Request, emit func(events.Event)) (string, error) {
-	var builder strings.Builder
-	_, err := a.client.Stream(ctx, req, func(delta string) {
+func (a *Agent) streamModelStep(ctx context.Context, req llm.Request, emit func(events.Event)) (llm.Response, time.Time, error) {
+	var firstDeltaAt time.Time
+	response, err := a.client.Stream(ctx, req, func(delta string) {
+		if firstDeltaAt.IsZero() && delta != "" {
+			firstDeltaAt = time.Now()
+		}
 		emit(events.Event{Type: events.ModelDelta, Timestamp: time.Now(), Payload: events.ModelDeltaPayload{Delta: delta}})
-		builder.WriteString(delta)
 	})
 	if err != nil {
-		return builder.String(), err
+		return response, firstDeltaAt, err
 	}
-	return builder.String(), nil
+	return response, firstDeltaAt, nil
 }
 
 func (a *Agent) withinToolBudget(toolName string, usage map[string]int) bool {
@@ -341,4 +381,11 @@ func sanitizeInput(args json.RawMessage) any {
 		return string(util.RedactSecrets(string(bytes)))
 	}
 	return data
+}
+
+func durationMs(d time.Duration) int64 {
+	if d < 0 {
+		return 0
+	}
+	return d.Milliseconds()
 }

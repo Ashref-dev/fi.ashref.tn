@@ -10,8 +10,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"fi-cli/internal/agent"
 	"fi-cli/internal/config"
@@ -41,14 +43,21 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			stageTimings := agent.DefaultStageTimings()
+
+			questionStart := time.Now()
 			question, err := resolveQuestion(args, os.Stdin, os.Stdout)
+			stageTimings[agent.StageQuestionResolutionInput] = durationMillis(time.Since(questionStart))
 			if err != nil {
 				if errors.Is(err, errNoQuestionInput) {
 					return cmd.Help()
 				}
 				return err
 			}
+
+			configStart := time.Now()
 			cfg, err := config.Load(cmd)
+			stageTimings[agent.StageConfigLoad] = durationMillis(time.Since(configStart))
 			if err != nil {
 				return err
 			}
@@ -81,14 +90,18 @@ func newRootCmd() *cobra.Command {
 			logger := buildLogger(cfg.Verbose)
 			defer func() { _ = logger.Sync() }()
 
+			repoRootStart := time.Now()
 			repoRoot, err := repo.FindRoot(cfg.Repo)
+			stageTimings[agent.StageRepoRootResolution] = durationMillis(time.Since(repoRootStart))
 			if err != nil {
 				logger.Warn("failed to find repo root", zap.Error(err))
 				repoRoot = cfg.Repo
 			}
 			repoRoot, _ = filepath.Abs(repoRoot)
 
+			repoCtxStart := time.Now()
 			repoCtx, err := repo.BuildContext(repoRoot, repo.Limits{ContextMaxBytes: cfg.ToolLimits.ContextMaxBytes, MaxFileBytes: cfg.ToolLimits.MaxFileBytes})
+			stageTimings[agent.StageRepoContextBuild] = durationMillis(time.Since(repoCtxStart))
 			if err != nil {
 				logger.Warn("failed to build repo context", zap.Error(err))
 			}
@@ -124,6 +137,7 @@ func newRootCmd() *cobra.Command {
 
 			if cfg.JSON {
 				result, err := ag.Run(ctx, question, repoRoot, repoCtx)
+				mergeStageTimings(&result, stageTimings)
 				if cfg.PersistRuns {
 					persistRun(logger, result)
 					// ensure persistence failure doesn't block output
@@ -150,15 +164,30 @@ func newRootCmd() *cobra.Command {
 				logFile = file
 				writer = io.MultiWriter(os.Stdout, logFile)
 			}
-			renderer := render.NewStdoutRenderer(writer, cfg.Verbose, cfg.Quiet, cfg.NoPlan, cfg.ShowHeader, cfg.ShowTools)
+			renderer := render.NewStdoutRenderer(
+				writer,
+				cfg.Verbose,
+				cfg.Quiet,
+				cfg.NoPlan,
+				cfg.ShowHeader,
+				cfg.ShowTools,
+				render.StdoutRendererOptions{
+					Interactive:   isInteractiveTerminal(os.Stdout),
+					SpinnerWriter: os.Stdout,
+				},
+			)
 			ag = agent.NewAgent(client, registry, renderer, logger, cfg)
 			runResult, runErr := ag.Run(ctx, question, repoRoot, repoCtx)
 			_ = renderer.Close()
-			if logFile != nil {
-				_ = logFile.Close()
-			}
+			mergeStageTimings(&runResult, stageTimings)
 			if cfg.PersistRuns {
 				persistRun(logger, runResult)
+			}
+			if cfg.Timings {
+				printTimingSummary(writer, runResult.StageTimingsMs)
+			}
+			if logFile != nil {
+				_ = logFile.Close()
 			}
 			if runErr != nil {
 				return runErr
@@ -177,6 +206,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().Bool("plan", false, "Generate and show a short plan")
 	cmd.Flags().Bool("no-web", false, "Disable web search")
 	cmd.Flags().Bool("no-plan", true, "Disable plan output and generation")
+	cmd.Flags().Bool("timings", false, "Print stage timing diagnostics")
 	cmd.Flags().Bool("show-header", false, "Show header lines")
 	cmd.Flags().Bool("show-tools", true, "Show tool call summaries")
 	cmd.Flags().Bool("no-tools", false, "Hide tool call summaries")
@@ -186,6 +216,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().String("log-file", "", "Write plain-text output to a file")
 	cmd.Flags().Int("history-lines", 50, "Number of shell history lines to include")
 	cmd.Flags().Bool("no-history", false, "Disable shell history context")
+	_ = cmd.Flags().MarkHidden("no-plan")
 
 	cmd.AddCommand(newInitCmd())
 	cmd.AddCommand(newAboutCmd())
@@ -378,4 +409,93 @@ func resolveQuestion(args []string, stdin *os.File, stdout io.Writer) (string, e
 		return "", errNoQuestionInput
 	}
 	return question, nil
+}
+
+func mergeStageTimings(result *agent.RunResult, preRunTimings map[string]int64) {
+	if result.StageTimingsMs == nil {
+		result.StageTimingsMs = agent.DefaultStageTimings()
+	}
+	for key, value := range preRunTimings {
+		if value < 0 {
+			value = 0
+		}
+		result.StageTimingsMs[key] = value
+	}
+}
+
+func isInteractiveTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+func durationMillis(d time.Duration) int64 {
+	if d < 0 {
+		return 0
+	}
+	return d.Milliseconds()
+}
+
+func printTimingSummary(w io.Writer, stageTimings map[string]int64) {
+	if w == nil {
+		return
+	}
+
+	merged := agent.DefaultStageTimings()
+	for key, value := range stageTimings {
+		if value < 0 {
+			value = 0
+		}
+		merged[key] = value
+	}
+
+	ordered := []string{
+		agent.StageQuestionResolutionInput,
+		agent.StageConfigLoad,
+		agent.StageRepoRootResolution,
+		agent.StageRepoContextBuild,
+		agent.StageHistoryLoad,
+		agent.StagePlanning,
+		agent.StageFirstModelResponseWait,
+		agent.StageToolExecutionTotal,
+		agent.StageFirstAnswerTokenLatency,
+		agent.StageTotalRunDuration,
+	}
+
+	fmt.Fprintln(w, "\ntimings:")
+	for _, key := range ordered {
+		fmt.Fprintf(w, "  %s: %dms\n", key, merged[key])
+	}
+
+	var toolStages []string
+	for key := range merged {
+		if strings.HasPrefix(key, agent.StageToolExecutionPrefix) {
+			toolStages = append(toolStages, key)
+		}
+	}
+	sort.Strings(toolStages)
+	for _, key := range toolStages {
+		fmt.Fprintf(w, "  %s: %dms\n", key, merged[key])
+	}
+
+	slowestKey := ""
+	var slowestMs int64
+	for key, value := range merged {
+		if key == agent.StageTotalRunDuration || value < 0 {
+			continue
+		}
+		if slowestKey == "" || value > slowestMs {
+			slowestKey = key
+			slowestMs = value
+		}
+	}
+	if slowestKey == "" {
+		slowestKey = "n/a"
+	}
+	fmt.Fprintf(w, "  slowest_stage: %s (%dms)\n", slowestKey, slowestMs)
 }
