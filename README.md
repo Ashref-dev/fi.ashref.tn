@@ -2,6 +2,8 @@
 
 fi-cli is a terminal-native agent orchestrator for repository Q&A. It prioritizes local evidence (grep/context), can optionally use web search, and is read-only by default.
 
+This README reflects current behavior validated by integration/unit tests in this repository.
+
 ## Install
 
 1. Build:
@@ -68,9 +70,18 @@ Environment variables:
 - `FICLI_TIMEOUT_SECONDS`, `FICLI_MAX_STEPS`
 - `FICLI_RESPONSE_MODE` (`quick`, `operator`, `explain`)
 - `FICLI_SHOW_HEADER`, `FICLI_SHOW_TOOLS`, `FICLI_NO_TOOLS`, `FICLI_NO_PLAN`
+- `FICLI_TIMINGS` (print stage timing diagnostics)
 - `FICLI_SHELL_ALLOWLIST`, `FICLI_LOG_FILE`, `FICLI_PERSIST_RUNS`
 - `FICLI_HISTORY_LINES`, `FICLI_NO_HISTORY`
 - `EXA_API_KEY` (optional; enables `exa_search`)
+
+## Runtime UX
+
+- Planning is opt-in: default behavior is execute directly without a plan.
+- Use `--plan` to request planning first.
+- Text mode streams model output and shows a transient `thinking` spinner while waiting.
+- Spinner resumes under plan/tool lines and stops on first model token or run completion.
+- `--timings` prints per-stage timing diagnostics and the slowest stage.
 
 ## Safety Policy
 
@@ -98,8 +109,10 @@ Tool call budgets (default):
 fi-cli "where is auth implemented?"
 fi-cli --mode operator "how do I run this project?"
 fi-cli --plan --show-header "summarize architecture"
+fi-cli --timings "where is auth implemented?"
 fi-cli --no-tools "quick summary"
 fi-cli --shell-allow "git status" "show git status"
+fi-cli --shell-allow "ls" --shell-allow "ls -la" "inspect current repo context"
 fi-cli
 ```
 
@@ -113,6 +126,28 @@ Default output is concise:
 tool: grep ok (12ms, 8 lines, 644 bytes)
 fi: <answer>
 ```
+
+Timing output example:
+```text
+timings:
+  question_resolution_input: 1ms
+  config_load: 2ms
+  repo_root_resolution: 1ms
+  repo_context_build: 7ms
+  history_load: 1ms
+  planning: 0ms
+  first_model_response_wait: 1834ms
+  tool_execution_total: 28ms
+  first_answer_token_latency: 1836ms
+  total_run_duration: 2042ms
+  slowest_stage: first_model_response_wait (1834ms)
+```
+
+Shell context tip:
+- In allowlist mode, add `ls` / `ls -la` to `shell_allowlist` if you want the agent to quickly inspect top-level context before deeper commands.
+
+History context:
+- By default, fi-cli includes recent shell history lines in model context (`FICLI_HISTORY_LINES`, disable with `--no-history` / `FICLI_NO_HISTORY`).
 
 ## License
 
