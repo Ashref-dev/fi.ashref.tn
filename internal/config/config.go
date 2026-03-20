@@ -13,19 +13,21 @@ import (
 )
 
 const (
-	DefaultModel        = "openrouter/pony-alpha"
-	DefaultMaxSteps     = 8
-	DefaultTimeout      = 60 * time.Second
-	DefaultBaseURL      = "https://openrouter.ai/api/v1"
-	DefaultResponseMode = "quick"
-	DefaultMaxContext   = 80 * 1024
-	DefaultGrepLines    = 200
-	DefaultGrepBytes    = 20 * 1024
-	DefaultShellBytes   = 20 * 1024
-	DefaultWebBytes     = 30 * 1024
-	DefaultMaxFileSize  = 32 * 1024
-	DefaultToolTimeout  = 10
-	DefaultToolParallel = 4
+	DefaultModel             = "openrouter/pony-alpha"
+	DefaultMaxSteps          = 8
+	DefaultTimeout           = 60 * time.Second
+	DefaultBaseURL           = "https://openrouter.ai/api/v1"
+	DefaultResponseMode      = "quick"
+	DefaultMaxContext        = 80 * 1024
+	DefaultGrepLines         = 200
+	DefaultGrepBytes         = 20 * 1024
+	DefaultShellBytes        = 20 * 1024
+	DefaultWebBytes          = 30 * 1024
+	DefaultMaxFileSize       = 32 * 1024
+	DefaultToolTimeout       = 10
+	DefaultToolParallel      = 4
+	DefaultReviewMaxFiles    = 20
+	DefaultReviewMaxFindings = 25
 )
 
 // ToolLimits controls max output sizes for tools and context.
@@ -74,6 +76,10 @@ type Config struct {
 	NoHistory                  bool
 	OutputFormat               string
 	PersistRuns                bool
+	ReviewMaxFiles             int
+	ReviewMaxFindings          int
+	ReviewInstructionsFile     string
+	ReviewPathRulesFile        string
 	OpenRouterBaseURL          string
 	HTTPReferer                string
 	Title                      string
@@ -113,6 +119,10 @@ type rawConfig struct {
 	NoHistory                  bool       `mapstructure:"no_history"`
 	OutputFormat               string     `mapstructure:"output_format"`
 	PersistRuns                bool       `mapstructure:"persist_runs"`
+	ReviewMaxFiles             int        `mapstructure:"review_max_files"`
+	ReviewMaxFindings          int        `mapstructure:"review_max_findings"`
+	ReviewInstructionsFile     string     `mapstructure:"review_instructions_file"`
+	ReviewPathRulesFile        string     `mapstructure:"review_path_rules_file"`
 	OpenRouterBaseURL          string     `mapstructure:"openrouter_base_url"`
 	HTTPReferer                string     `mapstructure:"http_referer"`
 	Title                      string     `mapstructure:"title"`
@@ -158,6 +168,10 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("no_history", false)
 	v.SetDefault("output_format", "text")
 	v.SetDefault("persist_runs", false)
+	v.SetDefault("review_max_files", DefaultReviewMaxFiles)
+	v.SetDefault("review_max_findings", DefaultReviewMaxFindings)
+	v.SetDefault("review_instructions_file", ".fi/review.md")
+	v.SetDefault("review_path_rules_file", ".fi/review-paths.yaml")
 	v.SetDefault("openrouter_base_url", DefaultBaseURL)
 	v.SetDefault("tool_limits.grep_max_results", DefaultGrepLines)
 	v.SetDefault("tool_limits.grep_max_bytes", DefaultGrepBytes)
@@ -170,26 +184,30 @@ func Load(cmd *cobra.Command) (Config, error) {
 	v.SetDefault("tool_limits.max_file_bytes", DefaultMaxFileSize)
 
 	if cmd != nil {
-		_ = v.BindPFlag("model", cmd.Flags().Lookup("model"))
-		_ = v.BindPFlag("fallback_models", cmd.Flags().Lookup("fallback-model"))
-		_ = v.BindPFlag("max_steps", cmd.Flags().Lookup("max-steps"))
-		_ = v.BindPFlag("repo", cmd.Flags().Lookup("repo"))
-		_ = v.BindPFlag("timeout", cmd.Flags().Lookup("timeout"))
-		_ = v.BindPFlag("unsafe_shell", cmd.Flags().Lookup("unsafe-shell"))
-		_ = v.BindPFlag("no_web", cmd.Flags().Lookup("no-web"))
-		_ = v.BindPFlag("no_plan", cmd.Flags().Lookup("no-plan"))
-		_ = v.BindPFlag("show_header", cmd.Flags().Lookup("show-header"))
-		_ = v.BindPFlag("show_tools", cmd.Flags().Lookup("show-tools"))
-		_ = v.BindPFlag("no_tools", cmd.Flags().Lookup("no-tools"))
-		_ = v.BindPFlag("response_mode", cmd.Flags().Lookup("mode"))
-		_ = v.BindPFlag("quiet", cmd.Flags().Lookup("quiet"))
-		_ = v.BindPFlag("json", cmd.Flags().Lookup("json"))
-		_ = v.BindPFlag("timings", cmd.Flags().Lookup("timings"))
-		_ = v.BindPFlag("verbose", cmd.Flags().Lookup("verbose"))
-		_ = v.BindPFlag("log_file", cmd.Flags().Lookup("log-file"))
-		_ = v.BindPFlag("history_lines", cmd.Flags().Lookup("history-lines"))
-		_ = v.BindPFlag("no_history", cmd.Flags().Lookup("no-history"))
-		_ = v.BindPFlag("shell_allowlist", cmd.Flags().Lookup("shell-allow"))
+		bindFlagIfPresent(v, cmd, "model", "model")
+		bindFlagIfPresent(v, cmd, "fallback_models", "fallback-model")
+		bindFlagIfPresent(v, cmd, "max_steps", "max-steps")
+		bindFlagIfPresent(v, cmd, "repo", "repo")
+		bindFlagIfPresent(v, cmd, "timeout", "timeout")
+		bindFlagIfPresent(v, cmd, "unsafe_shell", "unsafe-shell")
+		bindFlagIfPresent(v, cmd, "no_web", "no-web")
+		bindFlagIfPresent(v, cmd, "no_plan", "no-plan")
+		bindFlagIfPresent(v, cmd, "show_header", "show-header")
+		bindFlagIfPresent(v, cmd, "show_tools", "show-tools")
+		bindFlagIfPresent(v, cmd, "no_tools", "no-tools")
+		bindFlagIfPresent(v, cmd, "response_mode", "mode")
+		bindFlagIfPresent(v, cmd, "quiet", "quiet")
+		bindFlagIfPresent(v, cmd, "json", "json")
+		bindFlagIfPresent(v, cmd, "timings", "timings")
+		bindFlagIfPresent(v, cmd, "verbose", "verbose")
+		bindFlagIfPresent(v, cmd, "log_file", "log-file")
+		bindFlagIfPresent(v, cmd, "history_lines", "history-lines")
+		bindFlagIfPresent(v, cmd, "no_history", "no-history")
+		bindFlagIfPresent(v, cmd, "shell_allowlist", "shell-allow")
+		bindFlagIfPresent(v, cmd, "review_max_files", "review-max-files")
+		bindFlagIfPresent(v, cmd, "review_max_findings", "review-max-findings")
+		bindFlagIfPresent(v, cmd, "review_instructions_file", "review-instructions-file")
+		bindFlagIfPresent(v, cmd, "review_path_rules_file", "review-path-rules-file")
 	}
 
 	if seconds := os.Getenv("FICLI_TIMEOUT_SECONDS"); seconds != "" {
@@ -206,6 +224,12 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 	if allowlist := os.Getenv("FICLI_SHELL_ALLOWLIST"); allowlist != "" {
 		v.Set("shell_allowlist", splitCSV(allowlist))
+	}
+	if value := os.Getenv("FICLI_REVIEW_INSTRUCTIONS_FILE"); value != "" {
+		v.Set("review_instructions_file", value)
+	}
+	if value := os.Getenv("FICLI_REVIEW_PATH_RULES_FILE"); value != "" {
+		v.Set("review_path_rules_file", value)
 	}
 	if openAIModel := os.Getenv("OPENAI_MODEL"); openAIModel != "" && os.Getenv("FICLI_MODEL") == "" {
 		v.Set("model", openAIModel)
@@ -310,6 +334,10 @@ func Load(cmd *cobra.Command) (Config, error) {
 		NoHistory:                  raw.NoHistory,
 		OutputFormat:               raw.OutputFormat,
 		PersistRuns:                raw.PersistRuns,
+		ReviewMaxFiles:             raw.ReviewMaxFiles,
+		ReviewMaxFindings:          raw.ReviewMaxFindings,
+		ReviewInstructionsFile:     raw.ReviewInstructionsFile,
+		ReviewPathRulesFile:        raw.ReviewPathRulesFile,
 		OpenRouterBaseURL:          raw.OpenRouterBaseURL,
 		HTTPReferer:                raw.HTTPReferer,
 		Title:                      raw.Title,
@@ -360,6 +388,18 @@ func Load(cmd *cobra.Command) (Config, error) {
 	}
 	if cfg.ResponseMode == "" {
 		cfg.ResponseMode = DefaultResponseMode
+	}
+	if cfg.ReviewMaxFiles <= 0 {
+		cfg.ReviewMaxFiles = DefaultReviewMaxFiles
+	}
+	if cfg.ReviewMaxFindings <= 0 {
+		cfg.ReviewMaxFindings = DefaultReviewMaxFindings
+	}
+	if strings.TrimSpace(cfg.ReviewInstructionsFile) == "" {
+		cfg.ReviewInstructionsFile = ".fi/review.md"
+	}
+	if strings.TrimSpace(cfg.ReviewPathRulesFile) == "" {
+		cfg.ReviewPathRulesFile = ".fi/review-paths.yaml"
 	}
 
 	if cfg.ToolLimits.ContextMaxBytes <= 0 {
@@ -532,4 +572,15 @@ func parseDurationOrDefault(raw string, fallback time.Duration) (time.Duration, 
 		return 0, err
 	}
 	return parsed, nil
+}
+
+func bindFlagIfPresent(v *viper.Viper, cmd *cobra.Command, key string, flagName string) {
+	if v == nil || cmd == nil {
+		return
+	}
+	flag := cmd.Flags().Lookup(flagName)
+	if flag == nil {
+		return
+	}
+	_ = v.BindPFlag(key, flag)
 }

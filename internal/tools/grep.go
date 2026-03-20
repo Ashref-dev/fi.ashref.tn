@@ -72,6 +72,9 @@ type grepOutput struct {
 	Warning    string   `json:"warning,omitempty"`
 }
 
+// GrepOutputAlias exposes grep output for typed consumers without renaming the internal type.
+type GrepOutputAlias = grepOutput
+
 func (g *GrepTool) Execute(ctx context.Context, input json.RawMessage, meta Meta) (Result, error) {
 	var args grepInput
 	if err := json.Unmarshal(input, &args); err != nil {

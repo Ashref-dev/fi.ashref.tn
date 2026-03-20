@@ -21,6 +21,7 @@ import (
 	"fi-cli/internal/policy"
 	"fi-cli/internal/render"
 	"fi-cli/internal/repo"
+	"fi-cli/internal/review"
 	"fi-cli/internal/tools"
 
 	"github.com/spf13/cobra"
@@ -30,8 +31,14 @@ import (
 func main() {
 	root := newRootCmd()
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		exitCode := 1
+		if coder, ok := err.(interface{ ExitCode() int }); ok {
+			exitCode = coder.ExitCode()
+		}
+		if strings.TrimSpace(err.Error()) != "" {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(exitCode)
 	}
 }
 
@@ -232,6 +239,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newInitCmd())
 	cmd.AddCommand(newAboutCmd())
 	cmd.AddCommand(newPolicyCmd())
+	cmd.AddCommand(newReviewCmd())
 
 	return cmd
 }
@@ -276,6 +284,10 @@ llm_circuit_window: 30s
 llm_circuit_open_duration: 15s
 tool_parallelism: 4
 tool_timeout_seconds: 10
+review_max_files: 20
+review_max_findings: 25
+review_instructions_file: ".fi/review.md"
+review_path_rules_file: ".fi/review-paths.yaml"
 tool_limits:
   grep_max_calls: 30
   shell_max_calls: 30
@@ -358,6 +370,7 @@ func newAboutCmd() *cobra.Command {
 			mode := policy.ResolveShellMode(cfg.UnsafeShell, cfg.ShellAllowlist)
 			fmt.Fprintln(os.Stdout, "fi-cli")
 			fmt.Fprintln(os.Stdout, "- Default behavior: read-only repository analysis (grep/list_tree/context)")
+			fmt.Fprintln(os.Stdout, "- Review workflow: fi-cli review compares HEAD or a branch against a base ref and emits merge-ready findings")
 			fmt.Fprintf(os.Stdout, "- Active shell mode: %s\n", mode)
 			fmt.Fprintf(os.Stdout, "- Tool call caps: grep=%d shell=%d web=%d\n", cfg.ToolLimits.GrepMaxCalls, cfg.ToolLimits.ShellMaxCalls, cfg.ToolLimits.WebMaxCalls)
 			fmt.Fprintf(os.Stdout, "- Response mode: %s\n", cfg.ResponseMode)
@@ -368,6 +381,132 @@ func newAboutCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newReviewCmd() *cobra.Command {
+	var (
+		baseRef     string
+		headRef     string
+		workingTree bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "review",
+		Short: "Review the current branch or HEAD against a base ref",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stageTimings := map[string]int64{}
+
+			configStart := time.Now()
+			cfg, err := config.Load(cmd)
+			stageTimings[agent.StageConfigLoad] = durationMillis(time.Since(configStart))
+			if err != nil {
+				return err
+			}
+
+			apiKey, mockMode := resolveAPIKey(cfg)
+			if apiKey == "" && !mockMode {
+				onboardingPath := config.PreferredConfigPath()
+				return fmt.Errorf("fi-cli onboarding required.\n1) Run: fi-cli init\n2) Add api_key in: %s\n3) Run: fi-cli review --base main", onboardingPath)
+			}
+
+			logger := buildLogger(cfg.Verbose)
+			defer func() { _ = logger.Sync() }()
+
+			repoRootStart := time.Now()
+			repoRoot, err := repo.FindRoot(cfg.Repo)
+			stageTimings[agent.StageRepoRootResolution] = durationMillis(time.Since(repoRootStart))
+			if err != nil {
+				logger.Warn("failed to find repo root", zap.Error(err))
+				repoRoot = cfg.Repo
+			}
+			repoRoot, _ = filepath.Abs(repoRoot)
+
+			repoCtxStart := time.Now()
+			repoCtx, err := repo.BuildContext(repoRoot, repo.Limits{ContextMaxBytes: cfg.ToolLimits.ContextMaxBytes, MaxFileBytes: cfg.ToolLimits.MaxFileBytes})
+			stageTimings[agent.StageRepoContextBuild] = durationMillis(time.Since(repoCtxStart))
+			if err != nil {
+				logger.Warn("failed to build repo context", zap.Error(err))
+			}
+
+			client := buildLLMClient(apiKey, cfg, mockMode)
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			ctx, cancel = context.WithTimeout(ctx, cfg.Timeout)
+			defer cancel()
+
+			reviewer := review.NewReviewer(client, logger, cfg)
+			result, err := reviewer.Run(ctx, review.Params{
+				BaseRef:     baseRef,
+				HeadRef:     headRef,
+				WorkingTree: workingTree,
+			}, repoRoot, repoCtx)
+			mergeReviewStageTimings(&result, stageTimings)
+			if err != nil {
+				return err
+			}
+
+			writer := io.Writer(os.Stdout)
+			var logFile *os.File
+			if cfg.LogFile != "" {
+				logPath := cfg.LogFile
+				if !filepath.IsAbs(logPath) {
+					logPath = filepath.Join(repoRoot, logPath)
+				}
+				file, err := os.Create(logPath)
+				if err != nil {
+					return err
+				}
+				defer file.Close()
+				writer = io.MultiWriter(os.Stdout, file)
+				logFile = file
+			}
+
+			if cfg.JSON {
+				payload, _ := json.MarshalIndent(result, "", "  ")
+				fmt.Fprintln(writer, string(payload))
+			} else {
+				fmt.Fprintln(writer, review.FormatText(result))
+				if cfg.Timings {
+					printGenericTimingSummary(writer, result.StageTimingsMs, []string{
+						review.StageRefResolution,
+						review.StageMergeBase,
+						review.StageChangedFilesScan,
+						review.StageDiffContextBuild,
+						review.StageTriage,
+						review.StageDeepReview,
+						review.StageModelWaitTotal,
+						review.StageAggregation,
+						review.StageTotalRunDuration,
+					}, "", review.StageTotalRunDuration)
+				}
+			}
+			if logFile != nil {
+				_ = logFile.Sync()
+			}
+			if result.BlockerCount > 0 {
+				return exitCodeError{code: 3}
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().String("model", config.DefaultModel, "Model name")
+	cmd.Flags().StringSlice("fallback-model", nil, "Fallback model (repeatable)")
+	cmd.Flags().String("repo", ".", "Repository path")
+	cmd.Flags().String("timeout", config.DefaultTimeout.String(), "Timeout (e.g. 60s)")
+	cmd.Flags().Bool("json", false, "Output JSON only")
+	cmd.Flags().Bool("timings", false, "Print review timing diagnostics")
+	cmd.Flags().Bool("verbose", false, "Enable verbose logging")
+	cmd.Flags().String("log-file", "", "Write plain-text output to a file")
+	cmd.Flags().StringVar(&baseRef, "base", "", "Base ref to review against")
+	cmd.Flags().StringVar(&headRef, "head", "HEAD", "Head ref to review")
+	cmd.Flags().BoolVar(&workingTree, "working-tree", false, "Include staged and unstaged working tree changes")
+	cmd.Flags().Int("review-max-files", config.DefaultReviewMaxFiles, "Maximum changed files to review deeply")
+	cmd.Flags().Int("review-max-findings", config.DefaultReviewMaxFindings, "Maximum findings to emit")
+	cmd.Flags().String("review-instructions-file", ".fi/review.md", "Path to review instructions file")
+	cmd.Flags().String("review-path-rules-file", ".fi/review-paths.yaml", "Path to review path rules file")
+	return cmd
 }
 
 func buildLogger(verbose bool) *zap.Logger {
@@ -399,6 +538,53 @@ func persistRun(logger *zap.Logger, result agent.RunResult) {
 	if err := os.WriteFile(file, payload, 0o600); err != nil {
 		logger.Warn("failed to write run log", zap.Error(err))
 	}
+}
+
+type exitCodeError struct {
+	code int
+}
+
+func (e exitCodeError) Error() string {
+	return ""
+}
+
+func (e exitCodeError) ExitCode() int {
+	if e.code <= 0 {
+		return 1
+	}
+	return e.code
+}
+
+func resolveAPIKey(cfg config.Config) (string, bool) {
+	apiKey := os.Getenv("FICLI_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENROUTER_API_KEY")
+	}
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if apiKey == "" {
+		apiKey = cfg.APIKey
+	}
+	return apiKey, os.Getenv("FICLI_MOCK_LLM") == "1"
+}
+
+func buildLLMClient(apiKey string, cfg config.Config, mockMode bool) llm.Client {
+	var client llm.Client
+	if mockMode {
+		client = llm.NewMockClient()
+	} else {
+		client = llm.NewOpenRouterClient(apiKey, cfg.OpenRouterBaseURL, cfg.HTTPReferer, cfg.Title)
+	}
+	return llm.NewResilientClient(client, llm.ResilienceConfig{
+		FallbackModels:          cfg.FallbackModels,
+		RetryMaxAttempts:        cfg.LLMRetryMaxAttempts,
+		RetryInitialBackoff:     cfg.LLMRetryInitialBackoff,
+		RetryMaxBackoff:         cfg.LLMRetryMaxBackoff,
+		CircuitFailureThreshold: cfg.LLMCircuitFailureThreshold,
+		CircuitWindow:           cfg.LLMCircuitWindow,
+		CircuitOpenDuration:     cfg.LLMCircuitOpenDuration,
+	})
 }
 
 var errNoQuestionInput = errors.New("no question provided")
@@ -436,6 +622,18 @@ func resolveQuestion(args []string, stdin *os.File, stdout io.Writer) (string, e
 func mergeStageTimings(result *agent.RunResult, preRunTimings map[string]int64) {
 	if result.StageTimingsMs == nil {
 		result.StageTimingsMs = agent.DefaultStageTimings()
+	}
+	for key, value := range preRunTimings {
+		if value < 0 {
+			value = 0
+		}
+		result.StageTimingsMs[key] = value
+	}
+}
+
+func mergeReviewStageTimings(result *review.Result, preRunTimings map[string]int64) {
+	if result.StageTimingsMs == nil {
+		result.StageTimingsMs = review.DefaultStageTimings()
 	}
 	for key, value := range preRunTimings {
 		if value < 0 {
@@ -489,26 +687,42 @@ func printTimingSummary(w io.Writer, stageTimings map[string]int64) {
 		agent.StageTotalRunDuration,
 	}
 
-	fmt.Fprintln(w, "\ntimings:")
-	for _, key := range ordered {
-		fmt.Fprintf(w, "  %s: %dms\n", key, merged[key])
+	printGenericTimingSummary(w, merged, ordered, agent.StageToolExecutionPrefix, agent.StageTotalRunDuration)
+}
+
+func printGenericTimingSummary(w io.Writer, stageTimings map[string]int64, ordered []string, dynamicPrefix string, excludeSlowestKey string) {
+	if w == nil {
+		return
 	}
 
-	var toolStages []string
-	for key := range merged {
-		if strings.HasPrefix(key, agent.StageToolExecutionPrefix) {
-			toolStages = append(toolStages, key)
-		}
+	fmt.Fprintln(w, "\ntimings:")
+
+	printed := make(map[string]struct{}, len(stageTimings))
+	for _, key := range ordered {
+		fmt.Fprintf(w, "  %s: %dms\n", key, stageTimings[key])
+		printed[key] = struct{}{}
 	}
-	sort.Strings(toolStages)
-	for _, key := range toolStages {
-		fmt.Fprintf(w, "  %s: %dms\n", key, merged[key])
+
+	if dynamicPrefix != "" {
+		var dynamicKeys []string
+		for key := range stageTimings {
+			if _, ok := printed[key]; ok {
+				continue
+			}
+			if strings.HasPrefix(key, dynamicPrefix) {
+				dynamicKeys = append(dynamicKeys, key)
+			}
+		}
+		sort.Strings(dynamicKeys)
+		for _, key := range dynamicKeys {
+			fmt.Fprintf(w, "  %s: %dms\n", key, stageTimings[key])
+		}
 	}
 
 	slowestKey := ""
 	var slowestMs int64
-	for key, value := range merged {
-		if key == agent.StageTotalRunDuration || value < 0 {
+	for key, value := range stageTimings {
+		if key == excludeSlowestKey || value < 0 {
 			continue
 		}
 		if slowestKey == "" || value > slowestMs {

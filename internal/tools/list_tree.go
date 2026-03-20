@@ -57,6 +57,9 @@ type listTreeOutput struct {
 	DurationMs int64    `json:"duration_ms"`
 }
 
+// ListTreeOutputAlias exposes list_tree output for typed consumers without renaming the internal type.
+type ListTreeOutputAlias = listTreeOutput
+
 type treeEntry struct {
 	name  string
 	abs   string
